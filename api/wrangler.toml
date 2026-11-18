@@ -1,0 +1,8 @@
+name = "bet4fun-auto-check"
+main = "worker.js"
+compatibility_date = "2026-11-19"
+workers_dev = true
+
+[vars]
+ALLOWED_ORIGINS = "https://neuville11-lab.github.io"
+
