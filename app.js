@@ -47,13 +47,8 @@ function reviewActions(bet) {
   return `<div class="review-actions"><button data-review="won" data-id="${escapeHtml(bet.id)}">Ganadora</button><button data-review="lost" data-id="${escapeHtml(bet.id)}">No ganadora</button><button data-review="void" data-id="${escapeHtml(bet.id)}">Anulada</button></div>`;
 }
 function workflowMarkup(bet) {
-  const placement = bet.placed ? `<span class="workflow-pill placed">Apuesta realizada ✓</span><button class="link-mini" data-placement="${escapeHtml(bet.id)}" data-value="false">Deshacer</button>` : `<button class="workflow-button" data-placement="${escapeHtml(bet.id)}" data-value="true">Marcar realizada</button>`;
-  if (!bet.promoEligible) return `<div class="workflow-cell">${placement}<button class="link-mini" data-add-promo="${escapeHtml(bet.id)}">Vincular bono</button></div>`;
-  let bonus = '';
-  if (bet.promoStatus === 'received') bonus = `<span class="workflow-pill received">Freebet recibida ✓</span><button class="link-mini" data-promo="pending" data-id="${escapeHtml(bet.id)}">Deshacer resultado</button>`;
-  else if (bet.promoStatus === 'not_received') bonus = `<span class="workflow-pill missed">No recibida</span><button class="link-mini" data-promo="pending" data-id="${escapeHtml(bet.id)}">Deshacer resultado</button>`;
-  else bonus = bet.placed ? `<span class="workflow-pill waiting">Bono pendiente</span><div class="promo-actions"><button data-promo="received" data-id="${escapeHtml(bet.id)}">Recibido</button><button data-promo="not_received" data-id="${escapeHtml(bet.id)}">No recibido</button></div>` : '<span class="workflow-pill waiting">Marca primero la apuesta como realizada</span>';
-  return `<div class="workflow-cell">${placement}<div class="bonus-workflow"><small>PROMO / FREEBET</small>${bonus}<button class="link-mini" data-remove-promo="${escapeHtml(bet.id)}">Quitar bono</button></div></div>`;
+  const id = escapeHtml(bet.id), freebet = Boolean(bet.promoEligible), received = freebet && bet.promoStatus === 'received';
+  return `<div class="workflow-cell"><div class="promo-square-wrap"><button type="button" class="promo-square fb-square ${freebet ? 'selected' : ''}" role="checkbox" aria-checked="${freebet}" aria-label="${freebet ? 'Freebet marcada' : 'Marcar freebet'}" title="Marcar si esta apuesta genera una freebet" data-toggle-fb="${id}">FB</button><button type="button" class="promo-square tick-square ${received ? 'selected' : ''}" role="checkbox" aria-checked="${received}" aria-label="${received ? 'Freebet cobrada' : 'Marcar freebet como cobrada'}" title="Marcar cuando se haya cobrado la freebet" data-toggle-fb-received="${id}" ${freebet ? '' : 'disabled'}>✓</button></div></div>`;
 }
 function rowMarkup(bet) {
   const isDue = needsReview(bet);
@@ -62,17 +57,13 @@ function rowMarkup(bet) {
 }
 function bindBetActions() {
   $$('[data-review]').forEach(button => button.addEventListener('click', () => settleBet(button.dataset.id, button.dataset.review)));
-  $$('[data-placement]').forEach(button => button.addEventListener('click', () => {
-    const bet = bets.find(item => item.id === button.dataset.placement); if (bet) { bet.placed = button.dataset.value === 'true'; save(); }
+  $$('[data-toggle-fb]').forEach(button => button.addEventListener('click', () => {
+    const bet = bets.find(item => item.id === button.dataset.toggleFb); if (!bet) return;
+    bet.promoEligible = !bet.promoEligible; bet.promoStatus = bet.promoEligible ? 'pending' : 'none'; save();
   }));
-  $$('[data-promo]').forEach(button => button.addEventListener('click', () => {
-    const bet = bets.find(item => item.id === button.dataset.id); if (bet) { bet.promoStatus = button.dataset.promo; save(); }
-  }));
-  $$('[data-add-promo]').forEach(button => button.addEventListener('click', () => {
-    const bet = bets.find(item => item.id === button.dataset.addPromo); if (bet) { bet.promoEligible = true; bet.promoStatus = 'pending'; save(); }
-  }));
-  $$('[data-remove-promo]').forEach(button => button.addEventListener('click', () => {
-    const bet = bets.find(item => item.id === button.dataset.removePromo); if (bet) { bet.promoEligible = false; bet.promoStatus = 'none'; save(); }
+  $$('[data-toggle-fb-received]').forEach(button => button.addEventListener('click', () => {
+    const bet = bets.find(item => item.id === button.dataset.toggleFbReceived); if (!bet || !bet.promoEligible) return;
+    bet.promoStatus = bet.promoStatus === 'received' ? 'pending' : 'received'; save();
   }));
   $$('[data-open-capture]').forEach(button => button.addEventListener('click', () => openLinkedCapture(button.dataset.openCapture)));
 }
@@ -187,8 +178,7 @@ $('#bet-form').addEventListener('submit', e => {
   e.preventDefault(); const data = new FormData(e.currentTarget);
   const eventAt = new Date(data.get('eventAt'));
   const reviewAfter = new Date(eventAt.getTime() + 3 * 60 * 60 * 1000);
-  const promoEligible = data.get('promoEligible') === 'yes';
-  bets.push({ id: crypto.randomUUID(), date: data.get('date'), eventAt: eventAt.toISOString(), reviewAfter: reviewAfter.toISOString(), event: data.get('event').trim(), player: data.get('player').trim(), sport: data.get('sport').trim(), type: 'Surebet', result: 'pending', placed: data.get('placed') === 'yes', promoEligible, promoStatus: promoEligible ? 'pending' : 'none', captureId: pendingCaptureId, legs: [1, 2].map(i => ({ bookmaker: data.get(`bookmaker${i}`).trim(), region: 'ES', selection: data.get(`selection${i}`).trim(), odds: Number(data.get(`odds${i}`)), stake: Number(data.get(`stake${i}`)), profit: Number(data.get(`profit${i}`)), humanError: data.get(`error${i}`) === 'on', errorImpact: Number(data.get(`errorImpact${i}`) || 0) })) });
+  bets.push({ id: crypto.randomUUID(), date: data.get('date'), eventAt: eventAt.toISOString(), reviewAfter: reviewAfter.toISOString(), event: data.get('event').trim(), player: data.get('player').trim(), sport: data.get('sport').trim(), type: 'Surebet', result: 'pending', placed: true, promoEligible: false, promoStatus: 'none', captureId: pendingCaptureId, legs: [1, 2].map(i => ({ bookmaker: data.get(`bookmaker${i}`).trim(), region: 'ES', selection: data.get(`selection${i}`).trim(), odds: Number(data.get(`odds${i}`)), stake: Number(data.get(`stake${i}`)), profit: Number(data.get(`profit${i}`)), humanError: data.get(`error${i}`) === 'on', errorImpact: Number(data.get(`errorImpact${i}`) || 0) })) });
   save(); e.currentTarget.reset(); closeModal(); const toast = $('#toast'); toast.textContent = 'Surebet guardada'; toast.classList.add('show'); setTimeout(() => toast.classList.remove('show'), 2400);
 });
 $('#filter-type').addEventListener('change', renderRows);
