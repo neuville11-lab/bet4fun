@@ -1,7 +1,7 @@
-
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const STORAGE_KEY = 'bet4fun-bets';
+const PROFILE_KEY = 'bet4fun-profile';
 const initialBets = [{
   id: 'bet4fun-lakers-jazz-2026-11-18', date: '2026-11-18', eventAt: '2026-11-19T03:00:00.000Z', reviewAfter: '2026-11-19T06:00:00.000Z',
   event: 'Los Angeles Lakers – Utah Jazz', player: 'Quentin Grimes', sport: 'Baloncesto / NBA', type: 'Surebet', result: 'pending', actualProfit: 0, placed: true, promoEligible: false, promoStatus: 'none',
@@ -11,6 +11,7 @@ const initialBets = [{
   ]
 }];
 let bets = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null') || initialBets;
+let profile = JSON.parse(localStorage.getItem(PROFILE_KEY) || 'null') || { displayName: 'Mi cuenta', email: '', initials: '' };
 bets = bets.map(bet => ({ ...bet, placed: bet.placed ?? true, promoEligible: bet.promoEligible ?? false, promoStatus: bet.promoStatus || (bet.promoEligible ? 'pending' : 'none'), legs: bet.legs.map(leg => ({ ...leg, humanError: leg.humanError ?? false, errorImpact: Number(leg.errorImpact || 0) })) }));
 localStorage.setItem(STORAGE_KEY, JSON.stringify(bets));
 let captureDbPromise;
@@ -55,6 +56,31 @@ function sportEmoji(sport) {
   if (/esport|e-sport|gaming/.test(name)) return '🎮';
   if (/atletismo|running/.test(name)) return '🏃';
   return '🏆';
+}
+function profileInitials() {
+  const explicit = String(profile.initials || '').trim();
+  if (explicit) return explicit.slice(0, 3).toUpperCase();
+  const initials = String(profile.displayName || 'Mi cuenta').trim().split(/\s+/).slice(0, 2).map(word => word[0]).join('');
+  return initials.toUpperCase() || 'BF';
+}
+function renderProfile() {
+  $('#profile-name').textContent = profile.displayName || 'Mi cuenta';
+  $('#profile-email').textContent = profile.email || 'Configura tu perfil';
+  $('#profile-avatar').textContent = profileInitials();
+  $('#profile-edit-top').textContent = profileInitials();
+}
+function openProfile() {
+  const form = $('#profile-form');
+  form.elements.displayName.value = profile.displayName || '';
+  form.elements.email.value = profile.email || '';
+  form.elements.initials.value = profile.initials || '';
+  $('#profile-modal').classList.add('open');
+  $('#profile-modal').setAttribute('aria-hidden', 'false');
+  form.elements.displayName.focus();
+}
+function closeProfile() {
+  $('#profile-modal').classList.remove('open');
+  $('#profile-modal').setAttribute('aria-hidden', 'true');
 }
 
 function statusMarkup(bet) {
@@ -266,12 +292,25 @@ function showPage(name) {
 }
 
 $('#today').textContent = new Intl.DateTimeFormat('es-ES', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }).format(new Date());
+renderProfile();
+$('#profile-edit').addEventListener('click', openProfile);
+$('#profile-edit-top').addEventListener('click', openProfile);
+$('#profile-close').addEventListener('click', closeProfile);
+$('#profile-cancel').addEventListener('click', closeProfile);
+$('#profile-modal').addEventListener('click', event => { if (event.target === $('#profile-modal')) closeProfile(); });
+$('#profile-form').addEventListener('submit', event => {
+  event.preventDefault();
+  const data = new FormData(event.currentTarget);
+  profile = { displayName: String(data.get('displayName') || '').trim(), email: String(data.get('email') || '').trim(), initials: String(data.get('initials') || '').trim() };
+  localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
+  renderProfile(); closeProfile();
+});
 $$('.nav-item').forEach(link => link.addEventListener('click', e => { e.preventDefault(); showPage(link.dataset.page); }));
 $$('[data-page-link]').forEach(link => link.addEventListener('click', () => showPage(link.dataset.pageLink)));
 $$('[data-open-form]').forEach(button => button.addEventListener('click', openModal));
 $('#close-modal').addEventListener('click', closeModal); $('#cancel-modal').addEventListener('click', closeModal);
 $('#modal').addEventListener('click', e => { if (e.target === $('#modal')) closeModal(); });
-document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeModal(); closeProfile(); } });
 $('#bet-form').addEventListener('submit', e => {
   e.preventDefault(); const data = new FormData(e.currentTarget);
   const eventAt = new Date(data.get('eventAt'));
