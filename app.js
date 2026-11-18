@@ -34,8 +34,33 @@ const legsMarkup = bet => bet.legs.map(leg => {
 }).join('');
 const dayLabel = key => new Date(`${key}T12:00:00`).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 const shortDate = value => new Date(value).toLocaleString('es-ES', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+function sportEmoji(sport) {
+  const name = String(sport || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  if (/baloncesto|basket|nba/.test(name)) return '🏀';
+  if (/futbol americano|nfl|american football/.test(name)) return '🏈';
+  if (/futbol|football|soccer|liga|laliga/.test(name)) return '⚽';
+  if (/tenis|tennis/.test(name)) return '🎾';
+  if (/beisbol|baseball|mlb/.test(name)) return '⚾';
+  if (/hockey|nhl/.test(name)) return '🏒';
+  if (/rugby/.test(name)) return '🏉';
+  if (/voleibol|volleyball/.test(name)) return '🏐';
+  if (/balonmano|handball/.test(name)) return '🤾';
+  if (/golf/.test(name)) return '⛳';
+  if (/boxeo|boxing|mma|ufc/.test(name)) return '🥊';
+  if (/motor|formula|f1|moto/.test(name)) return '🏎️';
+  if (/ciclismo|cycling/.test(name)) return '🚴';
+  if (/natacion|swimming/.test(name)) return '🏊';
+  if (/esport|e-sport|gaming/.test(name)) return '🎮';
+  if (/atletismo|running/.test(name)) return '🏃';
+  return '🏆';
+}
 
 function statusMarkup(bet) {
+  if (bet.legs.some(leg => leg.outcome)) {
+    const winners = bet.legs.filter(leg => leg.outcome === 'won').map(leg => leg.bookmaker);
+    const summary = winners.length ? `Ganada en: ${winners.join(', ')}` : bet.legs.every(leg => leg.outcome === 'void') ? 'Todas las apuestas anuladas' : 'No ganada en ninguna casa';
+    return `<span class="status-chip ${bet.result === 'won' ? 'won' : bet.result === 'lost' ? 'lost' : 'pending'}">Resultado · ${money(bet.actualProfit)}</span><small class="analysis-summary">${escapeHtml(summary)}</small>`;
+  }
   if (bet.result === 'won') return `<span class="status-chip won">Ganadora · ${money(bet.actualProfit)}</span>`;
   if (bet.result === 'lost') return `<span class="status-chip lost">No ganadora · ${money(bet.actualProfit)}</span>`;
   if (bet.result === 'void') return '<span class="status-chip pending">Anulada</span>';
@@ -43,8 +68,8 @@ function statusMarkup(bet) {
   return `<span class="status-chip pending">Evento · ${shortDate(bet.eventAt)}</span>`;
 }
 function reviewActions(bet) {
-  if (!needsReview(bet)) return '';
-  return `<div class="review-actions"><button data-review="won" data-id="${escapeHtml(bet.id)}">Ganadora</button><button data-review="lost" data-id="${escapeHtml(bet.id)}">No ganadora</button><button data-review="void" data-id="${escapeHtml(bet.id)}">Anulada</button></div>`;
+  if (!needsReview(bet) && !bet.legs.some(leg => leg.outcome)) return '';
+  return `<div class="review-actions"><button data-analyze="${escapeHtml(bet.id)}">${bet.legs.some(leg => leg.outcome) ? 'Editar análisis' : 'Analizar apuesta'}</button></div>`;
 }
 function workflowMarkup(bet) {
   const id = escapeHtml(bet.id), freebet = Boolean(bet.promoEligible), received = freebet && bet.promoStatus === 'received';
@@ -53,10 +78,11 @@ function workflowMarkup(bet) {
 function rowMarkup(bet) {
   const isDue = needsReview(bet);
   const capture = bet.captureId ? `<button class="capture-link" data-open-capture="${escapeHtml(bet.captureId)}">Ver captura adjunta</button>` : '';
-  return `<tr class="bet-row ${isDue ? 'due-row' : ''}"><td><div class="bet-title">${escapeHtml(bet.event)}</div><div class="bet-sub">${escapeHtml(bet.player)} · ${escapeHtml(bet.sport)} · ${shortDate(bet.eventAt)}</div>${capture}</td><td><span class="type-chip">${escapeHtml(bet.type)}</span></td><td><div class="legs-cell">${legsMarkup(bet)}</div>${reviewActions(bet)}</td><td class="amount">${money(totalStake(bet))}</td><td class="profit-positive">${openBet(bet) ? '+' + money(potential(bet)) : money(bet.actualProfit)}</td><td>${statusMarkup(bet)}</td><td>${workflowMarkup(bet)}</td></tr>`;
+  return `<tr class="bet-row ${isDue ? 'due-row' : ''}"><td><div class="bet-title">${escapeHtml(bet.event)}</div><div class="bet-sub">${escapeHtml(bet.player)} · <span class="sport-label"><span aria-hidden="true">${sportEmoji(bet.sport)}</span> ${escapeHtml(bet.sport)}</span> · ${shortDate(bet.eventAt)}</div>${capture}</td><td><span class="type-chip">${escapeHtml(bet.type)}</span></td><td><div class="legs-cell">${legsMarkup(bet)}</div>${reviewActions(bet)}</td><td class="amount">${money(totalStake(bet))}</td><td class="profit-positive">${openBet(bet) ? '+' + money(potential(bet)) : money(bet.actualProfit)}</td><td>${statusMarkup(bet)}</td><td>${workflowMarkup(bet)}</td></tr>`;
 }
 function bindBetActions() {
   $$('[data-review]').forEach(button => button.addEventListener('click', () => settleBet(button.dataset.id, button.dataset.review)));
+  $$('[data-analyze]').forEach(button => button.addEventListener('click', () => analyzeBet(button.dataset.analyze)));
   $$('[data-toggle-fb]').forEach(button => button.addEventListener('click', () => {
     const bet = bets.find(item => item.id === button.dataset.toggleFb); if (!bet) return;
     bet.promoEligible = !bet.promoEligible; bet.promoStatus = bet.promoEligible ? 'pending' : 'none'; save();
@@ -66,6 +92,31 @@ function bindBetActions() {
     bet.promoStatus = bet.promoStatus === 'received' ? 'pending' : 'received'; save();
   }));
   $$('[data-open-capture]').forEach(button => button.addEventListener('click', () => openLinkedCapture(button.dataset.openCapture)));
+}
+function analyzeBet(id) {
+  const bet = bets.find(item => item.id === id); if (!bet) return;
+  const backdrop = document.createElement('div'); backdrop.className = 'analysis-backdrop';
+  backdrop.innerHTML = `<section class="analysis-modal" role="dialog" aria-modal="true" aria-labelledby="analysis-title"><div class="modal-head"><div><div class="eyebrow">REVISIÓN DE RESULTADO</div><h2 id="analysis-title">${escapeHtml(bet.event)}</h2></div><button type="button" class="close-button" data-close-analysis aria-label="Cerrar">×</button></div><p class="analysis-help">Indica el resultado de cada selección. La plataforma calculará en qué casa se ganó y el beneficio neto. No consulta automáticamente las casas de apuestas.</p><form class="analysis-form">${bet.legs.map((leg, index) => `<label class="analysis-leg"><span><b>${escapeHtml(leg.bookmaker)}</b><small>${escapeHtml(leg.selection)}</small></span><select name="outcome-${index}" required><option value="">Selecciona resultado</option><option value="won" ${leg.outcome === 'won' ? 'selected' : ''}>Ganada</option><option value="lost" ${leg.outcome === 'lost' ? 'selected' : ''}>No ganada</option><option value="void" ${leg.outcome === 'void' ? 'selected' : ''}>Anulada</option></select></label>`).join('')}<div class="form-actions"><button type="button" class="secondary-button" data-close-analysis>Cancelar</button><button type="submit" class="primary-button">Guardar análisis</button></div></form></section>`;
+  document.body.append(backdrop);
+  const close = () => backdrop.remove();
+  backdrop.querySelectorAll('[data-close-analysis]').forEach(button => button.addEventListener('click', close));
+  backdrop.addEventListener('click', event => { if (event.target === backdrop) close(); });
+  backdrop.querySelector('form').addEventListener('submit', event => {
+    event.preventDefault();
+    const outcomes = bet.legs.map((leg, index) => backdrop.querySelector(`[name="outcome-${index}"]`).value);
+    if (outcomes.some(outcome => !outcome)) return;
+    let actualProfit = 0;
+    bet.legs.forEach((leg, index) => {
+      leg.outcome = outcomes[index];
+      const stake = Number(leg.stake || 0), odds = Number(leg.odds || 0);
+      if (leg.outcome === 'won') actualProfit += stake * (odds - 1);
+      else if (leg.outcome === 'lost') actualProfit -= stake;
+    });
+    bet.actualProfit = Number(actualProfit.toFixed(2));
+    bet.result = outcomes.every(outcome => outcome === 'void') ? 'void' : outcomes.includes('won') ? (actualProfit >= 0 ? 'won' : 'lost') : 'lost';
+    bet.verifiedAt = new Date().toISOString();
+    close(); save();
+  });
 }
 function renderRows() {
   const sorted = [...bets].sort((a, b) => b.date.localeCompare(a.date) || new Date(b.eventAt) - new Date(a.eventAt));
@@ -83,14 +134,14 @@ function renderDays() {
   const entries = [...grouped.entries()];
   $('#day-groups').innerHTML = entries.length ? entries.map(([day, dayBets]) => {
     const possible = dayBets.filter(b => openBet(b) && !needsReview(b)).reduce((s, b) => s + potential(b), 0);
-    return `<section class="day-group"><div class="day-group-head"><div><span class="day-date">${escapeHtml(dayLabel(day))}</span><small>${dayBets.length} ${dayBets.length === 1 ? 'surebet' : 'surebets'}</small></div><div class="day-potential"><small>BENEFICIO POTENCIAL</small><b>${money(possible)}</b></div></div>${dayBets.map(b => `<div class="day-bet"><span class="day-bet-mark">${b.type === 'Surebet' ? 'S' : 'F'}</span><div class="day-bet-title"><b>${escapeHtml(b.event)}</b><small>${escapeHtml(b.player)} · ${escapeHtml(b.sport)}</small></div><strong>${openBet(b) && !needsReview(b) ? '+' + money(potential(b)) : needsReview(b) ? 'VERIFICAR' : money(b.actualProfit)}</strong></div>`).join('')}</section>`;
+    return `<section class="day-group"><div class="day-group-head"><div><span class="day-date">${escapeHtml(dayLabel(day))}</span><small>${dayBets.length} ${dayBets.length === 1 ? 'surebet' : 'surebets'}</small></div><div class="day-potential"><small>BENEFICIO POTENCIAL</small><b>${money(possible)}</b></div></div>${dayBets.map(b => `<div class="day-bet"><span class="day-bet-mark">${b.type === 'Surebet' ? 'S' : 'F'}</span><div class="day-bet-title"><b><span class="sport-emoji" aria-hidden="true">${sportEmoji(b.sport)}</span>${escapeHtml(b.event)}</b><small>${escapeHtml(b.player)} · ${escapeHtml(b.sport)}</small></div><strong>${openBet(b) && !needsReview(b) ? '+' + money(potential(b)) : needsReview(b) ? 'VERIFICAR' : money(b.actualProfit)}</strong></div>`).join('')}</section>`;
   }).join('') : '<div class="empty-note visible">Todavía no hay apuestas registradas.</div>';
 }
 function renderNextEvent() {
   const next = bets.filter(openBet).sort((a, b) => new Date(a.reviewAfter) - new Date(b.reviewAfter))[0];
   if (!next) { $('#next-event').innerHTML = '<div class="empty-next">No hay apuestas pendientes de revisión.</div>'; return; }
   const due = needsReview(next);
-  $('#next-event').innerHTML = `<div class="event-card ${due ? 'event-due' : ''}"><div class="event-card-top"><span class="event-sport">${escapeHtml(next.sport)}</span><span class="event-countdown">${due ? 'HORA DE REVISAR' : 'INICIO ' + shortDate(next.eventAt)}</span></div><h3>${escapeHtml(next.event)}</h3><p>${escapeHtml(next.player)} · ${next.legs.map(l => escapeHtml(l.bookmaker)).join(' / ')}</p><div class="event-review"><span>${due ? 'El evento ya debería haber terminado.' : 'Aviso de revisión previsto tras el partido.'}</span><b>${due ? '¡Revisar resultado!' : '⏱ ' + shortDate(next.reviewAfter)}</b></div>${reviewActions(next)}</div>`;
+  $('#next-event').innerHTML = `<div class="event-card ${due ? 'event-due' : ''}"><div class="event-card-top"><span class="event-sport"><span aria-hidden="true">${sportEmoji(next.sport)}</span> ${escapeHtml(next.sport)}</span><span class="event-countdown">${due ? 'HORA DE REVISAR' : 'INICIO ' + shortDate(next.eventAt)}</span></div><h3>${escapeHtml(next.event)}</h3><p>${escapeHtml(next.player)} · ${next.legs.map(l => escapeHtml(l.bookmaker)).join(' / ')}</p><div class="event-review"><span>${due ? 'El evento ya debería haber terminado.' : 'Aviso de revisión previsto tras el partido.'}</span><b>${due ? '¡Revisar resultado!' : '⏱ ' + shortDate(next.reviewAfter)}</b></div>${reviewActions(next)}</div>`;
 }
 function renderData() {
   const houses = new Map(), sports = new Map();
@@ -115,10 +166,21 @@ function renderData() {
   $('#error-rate').innerHTML = `${legsCount ? (errorLegs / legsCount * 100).toLocaleString('es-ES', { maximumFractionDigits: 1 }) : '0'}<span class="unit">%</span>`;
   $('#error-count').textContent = `${errorLegs} de ${legsCount} apuestas individuales con error`;
   $('#error-impact').textContent = money(errorImpact);
-  $('#bookmaker-rows').innerHTML = houseList.map(([name, item]) => `<tr><td><span class="bookmaker-name">${escapeHtml(name)}</span></td><td>${item.count}</td><td class="amount">${money(item.amount)}</td><td><div class="data-share"><i style="width:${item.amount / Math.max(1, ...houseList.map(([, v]) => v.amount)) * 100}%"></i></div></td></tr>`).join('');
-  $('#sport-rows').innerHTML = sportList.map(([sport, item]) => `<tr><td><span class="bookmaker-name">${escapeHtml(sport)}</span></td><td>${item.count}</td><td class="profit-positive">${money(item.potential)}</td></tr>`).join('');
+  const maxHouseAmount = Math.max(1, ...houseList.map(([, item]) => item.amount));
+  $('#bookmaker-chart').innerHTML = houseList.map(([name, item]) => `<div class="visual-bar-row"><div class="visual-bar-head"><b>${escapeHtml(name)}</b><strong>${money(item.amount)}</strong></div><div class="visual-bar-track"><i class="house-bar" style="width:${Math.max(2, item.amount / maxHouseAmount * 100)}%"></i></div><small>${item.count} ${item.count === 1 ? 'apuesta individual' : 'apuestas individuales'}</small></div>`).join('');
+  $('#sport-chart').innerHTML = sportList.map(([sport, item]) => `<div class="visual-bar-row"><div class="visual-bar-head"><b><span class="sport-emoji" aria-hidden="true">${sportEmoji(sport)}</span>${escapeHtml(sport)}</b><strong>${item.count} ${item.count === 1 ? 'apuesta' : 'apuestas'}</strong></div><div class="visual-bar-track"><i class="sport-bar" style="width:${Math.max(3, item.count / Math.max(1, ...sportList.map(([, value]) => value.count)) * 100)}%"></i></div><small>Beneficio potencial ${money(item.potential)}</small></div>`).join('');
+  const errorRate = legsCount ? errorLegs / legsCount * 100 : 0;
+  $('#error-donut').style.setProperty('--error-rate', `${errorRate}%`);
+  $('#error-donut').setAttribute('aria-label', `${errorRate.toLocaleString('es-ES', { maximumFractionDigits: 1 })}% de errores humanos`);
+  $('#error-donut-rate').textContent = `${errorRate.toLocaleString('es-ES', { maximumFractionDigits: 1 })}%`;
+  $('#error-donut-count').textContent = `${errorLegs} de ${legsCount} apuestas`;
+  $('#error-impact-visual').textContent = money(errorImpact);
+  $('#bookmaker-rows').innerHTML = houseList.map(([name, item]) => `<tr><td><span class="bookmaker-name">${escapeHtml(name)}</span></td><td>${item.count}</td><td class="amount">${money(item.amount)}</td><td><div class="data-share"><i style="width:${item.amount / maxHouseAmount * 100}%"></i></div></td></tr>`).join('');
+  $('#sport-rows').innerHTML = sportList.map(([sport, item]) => `<tr><td><span class="bookmaker-name"><span class="sport-emoji" aria-hidden="true">${sportEmoji(sport)}</span>${escapeHtml(sport)}</span></td><td>${item.count}</td><td class="profit-positive">${money(item.potential)}</td></tr>`).join('');
   $('#bookmaker-empty').classList.toggle('visible', !houseList.length);
   $('#sport-empty').classList.toggle('visible', !sportList.length);
+  $('#bookmaker-chart-empty').classList.toggle('visible', !houseList.length);
+  $('#sport-chart-empty').classList.toggle('visible', !sportList.length);
   const errors = bets.flatMap(bet => bet.legs.filter(leg => leg.humanError).map(leg => ({ bet, leg })));
   $('#error-history').innerHTML = errors.map(({ bet, leg }) => `<div class="error-row"><span class="error-mark small">!</span><div><b>${escapeHtml(leg.bookmaker)} · ${escapeHtml(leg.selection)}</b><small>${escapeHtml(bet.event)} · ${dayLabel(bet.date)}</small></div><strong>${money(leg.errorImpact)}</strong></div>`).join('');
   $('#error-empty').classList.toggle('visible', !errors.length);
