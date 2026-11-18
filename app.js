@@ -14,6 +14,8 @@ bets = bets.map(bet => ({ ...bet, placed: bet.placed ?? true, promoEligible: bet
 localStorage.setItem(STORAGE_KEY, JSON.stringify(bets));
 let captureDbPromise;
 let captureObjectUrls = [];
+let pendingCaptureId = null;
+let pendingCaptureName = '';
 
 const money = value => new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(Number(value) || 0);
 const todayKey = () => {
@@ -45,22 +47,23 @@ function reviewActions(bet) {
   return `<div class="review-actions"><button data-review="won" data-id="${escapeHtml(bet.id)}">Ganadora</button><button data-review="lost" data-id="${escapeHtml(bet.id)}">No ganadora</button><button data-review="void" data-id="${escapeHtml(bet.id)}">Anulada</button></div>`;
 }
 function workflowMarkup(bet) {
-  const placement = bet.placed ? '<span class="workflow-pill placed">Apuesta realizada ✓</span>' : `<button class="workflow-button" data-placement="${escapeHtml(bet.id)}">Marcar realizada</button>`;
+  const placement = bet.placed ? `<span class="workflow-pill placed">Apuesta realizada ✓</span><button class="link-mini" data-placement="${escapeHtml(bet.id)}" data-value="false">Deshacer</button>` : `<button class="workflow-button" data-placement="${escapeHtml(bet.id)}" data-value="true">Marcar realizada</button>`;
   if (!bet.promoEligible) return `<div class="workflow-cell">${placement}<button class="link-mini" data-add-promo="${escapeHtml(bet.id)}">Vincular bono</button></div>`;
   let bonus = '';
-  if (bet.promoStatus === 'received') bonus = '<span class="workflow-pill received">Freebet recibida ✓</span>';
-  else if (bet.promoStatus === 'not_received') bonus = `<span class="workflow-pill missed">No recibida</span><button class="link-mini" data-promo="pending" data-id="${escapeHtml(bet.id)}">Cambiar estado</button>`;
+  if (bet.promoStatus === 'received') bonus = `<span class="workflow-pill received">Freebet recibida ✓</span><button class="link-mini" data-promo="pending" data-id="${escapeHtml(bet.id)}">Deshacer resultado</button>`;
+  else if (bet.promoStatus === 'not_received') bonus = `<span class="workflow-pill missed">No recibida</span><button class="link-mini" data-promo="pending" data-id="${escapeHtml(bet.id)}">Deshacer resultado</button>`;
   else bonus = bet.placed ? `<span class="workflow-pill waiting">Bono pendiente</span><div class="promo-actions"><button data-promo="received" data-id="${escapeHtml(bet.id)}">Recibido</button><button data-promo="not_received" data-id="${escapeHtml(bet.id)}">No recibido</button></div>` : '<span class="workflow-pill waiting">Marca primero la apuesta como realizada</span>';
-  return `<div class="workflow-cell">${placement}<div class="bonus-workflow"><small>PROMO / FREEBET</small>${bonus}</div></div>`;
+  return `<div class="workflow-cell">${placement}<div class="bonus-workflow"><small>PROMO / FREEBET</small>${bonus}<button class="link-mini" data-remove-promo="${escapeHtml(bet.id)}">Quitar bono</button></div></div>`;
 }
 function rowMarkup(bet) {
   const isDue = needsReview(bet);
-  return `<tr class="bet-row ${isDue ? 'due-row' : ''}"><td><div class="bet-title">${escapeHtml(bet.event)}</div><div class="bet-sub">${escapeHtml(bet.player)} · ${escapeHtml(bet.sport)} · ${shortDate(bet.eventAt)}</div></td><td><span class="type-chip">${escapeHtml(bet.type)}</span></td><td><div class="legs-cell">${legsMarkup(bet)}</div>${reviewActions(bet)}</td><td class="amount">${money(totalStake(bet))}</td><td class="profit-positive">${openBet(bet) ? '+' + money(potential(bet)) : money(bet.actualProfit)}</td><td>${statusMarkup(bet)}</td><td>${workflowMarkup(bet)}</td></tr>`;
+  const capture = bet.captureId ? `<button class="capture-link" data-open-capture="${escapeHtml(bet.captureId)}">Ver captura adjunta</button>` : '';
+  return `<tr class="bet-row ${isDue ? 'due-row' : ''}"><td><div class="bet-title">${escapeHtml(bet.event)}</div><div class="bet-sub">${escapeHtml(bet.player)} · ${escapeHtml(bet.sport)} · ${shortDate(bet.eventAt)}</div>${capture}</td><td><span class="type-chip">${escapeHtml(bet.type)}</span></td><td><div class="legs-cell">${legsMarkup(bet)}</div>${reviewActions(bet)}</td><td class="amount">${money(totalStake(bet))}</td><td class="profit-positive">${openBet(bet) ? '+' + money(potential(bet)) : money(bet.actualProfit)}</td><td>${statusMarkup(bet)}</td><td>${workflowMarkup(bet)}</td></tr>`;
 }
 function bindBetActions() {
   $$('[data-review]').forEach(button => button.addEventListener('click', () => settleBet(button.dataset.id, button.dataset.review)));
   $$('[data-placement]').forEach(button => button.addEventListener('click', () => {
-    const bet = bets.find(item => item.id === button.dataset.placement); if (bet) { bet.placed = true; save(); }
+    const bet = bets.find(item => item.id === button.dataset.placement); if (bet) { bet.placed = button.dataset.value === 'true'; save(); }
   }));
   $$('[data-promo]').forEach(button => button.addEventListener('click', () => {
     const bet = bets.find(item => item.id === button.dataset.id); if (bet) { bet.promoStatus = button.dataset.promo; save(); }
@@ -68,6 +71,10 @@ function bindBetActions() {
   $$('[data-add-promo]').forEach(button => button.addEventListener('click', () => {
     const bet = bets.find(item => item.id === button.dataset.addPromo); if (bet) { bet.promoEligible = true; bet.promoStatus = 'pending'; save(); }
   }));
+  $$('[data-remove-promo]').forEach(button => button.addEventListener('click', () => {
+    const bet = bets.find(item => item.id === button.dataset.removePromo); if (bet) { bet.promoEligible = false; bet.promoStatus = 'none'; save(); }
+  }));
+  $$('[data-open-capture]').forEach(button => button.addEventListener('click', () => openLinkedCapture(button.dataset.openCapture)));
 }
 function renderRows() {
   const sorted = [...bets].sort((a, b) => b.date.localeCompare(a.date) || new Date(b.eventAt) - new Date(a.eventAt));
@@ -151,18 +158,22 @@ function settleBet(id, result) {
   bet.result = result; bet.actualProfit = actualProfit; bet.verifiedAt = new Date().toISOString(); save();
 }
 function openModal() {
-  const form = $('#bet-form'); form.elements.date.value = todayKey();
+  const form = $('#bet-form'); form.reset(); form.elements.date.value = todayKey();
   const soon = new Date(Date.now() + 3600000); soon.setMinutes(0, 0, 0);
   form.elements.eventAt.value = `${soon.getFullYear()}-${String(soon.getMonth() + 1).padStart(2, '0')}-${String(soon.getDate()).padStart(2, '0')}T${String(soon.getHours()).padStart(2, '0')}:00`;
+  let hint = $('#capture-link-hint');
+  if (!hint) { hint = document.createElement('div'); hint.id = 'capture-link-hint'; hint.className = 'form-hint capture-linked-hint'; form.prepend(hint); }
+  hint.hidden = !pendingCaptureId;
+  hint.textContent = pendingCaptureId ? `La captura «${pendingCaptureName}» quedará adjunta a esta apuesta.` : '';
   $('#modal').classList.add('open'); $('#modal').setAttribute('aria-hidden', 'false'); form.elements.event.focus();
 }
-function closeModal() { $('#modal').classList.remove('open'); $('#modal').setAttribute('aria-hidden', 'true'); }
+function closeModal() { $('#modal').classList.remove('open'); $('#modal').setAttribute('aria-hidden', 'true'); pendingCaptureId = null; pendingCaptureName = ''; }
 function showPage(name) {
   $$('.page').forEach(page => page.classList.toggle('active-page', page.id === `page-${name}`));
   $$('.nav-item').forEach(link => link.classList.toggle('active', link.dataset.page === name));
   $('#crumb-name').textContent = ({ dashboard: 'Resumen', apuestas: 'Mis apuestas', promos: 'Freebets', datos: 'Datos', capturas: 'Capturas' })[name] || 'Resumen';
   history.replaceState(null, '', `#${name}`);
-  if (name === 'capturas') renderCaptures();
+  if (name === 'capturas') return renderCaptures();
 }
 
 $('#today').textContent = new Intl.DateTimeFormat('es-ES', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }).format(new Date());
@@ -177,7 +188,7 @@ $('#bet-form').addEventListener('submit', e => {
   const eventAt = new Date(data.get('eventAt'));
   const reviewAfter = new Date(eventAt.getTime() + 3 * 60 * 60 * 1000);
   const promoEligible = data.get('promoEligible') === 'yes';
-  bets.push({ id: crypto.randomUUID(), date: data.get('date'), eventAt: eventAt.toISOString(), reviewAfter: reviewAfter.toISOString(), event: data.get('event').trim(), player: data.get('player').trim(), sport: data.get('sport').trim(), type: 'Surebet', result: 'pending', placed: data.get('placed') === 'yes', promoEligible, promoStatus: promoEligible ? 'pending' : 'none', legs: [1, 2].map(i => ({ bookmaker: data.get(`bookmaker${i}`).trim(), region: 'ES', selection: data.get(`selection${i}`).trim(), odds: Number(data.get(`odds${i}`)), stake: Number(data.get(`stake${i}`)), profit: Number(data.get(`profit${i}`)), humanError: data.get(`error${i}`) === 'on', errorImpact: Number(data.get(`errorImpact${i}`) || 0) })) });
+  bets.push({ id: crypto.randomUUID(), date: data.get('date'), eventAt: eventAt.toISOString(), reviewAfter: reviewAfter.toISOString(), event: data.get('event').trim(), player: data.get('player').trim(), sport: data.get('sport').trim(), type: 'Surebet', result: 'pending', placed: data.get('placed') === 'yes', promoEligible, promoStatus: promoEligible ? 'pending' : 'none', captureId: pendingCaptureId, legs: [1, 2].map(i => ({ bookmaker: data.get(`bookmaker${i}`).trim(), region: 'ES', selection: data.get(`selection${i}`).trim(), odds: Number(data.get(`odds${i}`)), stake: Number(data.get(`stake${i}`)), profit: Number(data.get(`profit${i}`)), humanError: data.get(`error${i}`) === 'on', errorImpact: Number(data.get(`errorImpact${i}`) || 0) })) });
   save(); e.currentTarget.reset(); closeModal(); const toast = $('#toast'); toast.textContent = 'Surebet guardada'; toast.classList.add('show'); setTimeout(() => toast.classList.remove('show'), 2400);
 });
 $('#filter-type').addEventListener('change', renderRows);
@@ -213,15 +224,30 @@ async function renderCaptures() {
     $('#capture-empty').classList.toggle('visible', !files.length);
     grid.innerHTML = files.sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map(file => {
       const url = URL.createObjectURL(file.blob); captureObjectUrls.push(url);
-      return `<article class="capture-card"><img src="${url}" alt="Captura de ${escapeHtml(file.name)}"><div class="capture-info"><b title="${escapeHtml(file.name)}">${escapeHtml(file.name)}</b><small>${shortDate(file.createdAt)}</small><button data-delete-capture="${escapeHtml(file.id)}" aria-label="Eliminar ${escapeHtml(file.name)}">Eliminar</button></div></article>`;
+      const linkedBet = bets.find(bet => bet.captureId === file.id);
+      const action = linkedBet ? `<button class="capture-use linked" data-open-bet-capture="${escapeHtml(file.id)}">Adjunta a ${escapeHtml(linkedBet.event)}</button>` : `<button class="capture-use" data-incorporate-capture="${escapeHtml(file.id)}">Incorporar como apuesta</button>`;
+      return `<article class="capture-card" data-capture-card="${escapeHtml(file.id)}"><img src="${url}" alt="Captura de ${escapeHtml(file.name)}"><div class="capture-info"><b title="${escapeHtml(file.name)}">${escapeHtml(file.name)}</b><small>${shortDate(file.createdAt)}</small>${action}<button data-delete-capture="${escapeHtml(file.id)}" aria-label="Eliminar ${escapeHtml(file.name)}">Eliminar</button></div></article>`;
     }).join('');
+    $$('[data-incorporate-capture]').forEach(button => button.addEventListener('click', async () => {
+      const file = await captureRequest('readonly', store => store.get(button.dataset.incorporateCapture));
+      if (!file) return;
+      pendingCaptureId = file.id; pendingCaptureName = file.name; openModal();
+    }));
+    $$('[data-open-bet-capture]').forEach(button => button.addEventListener('click', () => openLinkedCapture(button.dataset.openBetCapture)));
     $$('[data-delete-capture]').forEach(button => button.addEventListener('click', async () => {
-      await captureRequest('readwrite', store => store.delete(button.dataset.deleteCapture)); renderCaptures();
+      const id = button.dataset.deleteCapture;
+      bets.filter(bet => bet.captureId === id).forEach(bet => { bet.captureId = null; });
+      save(); await captureRequest('readwrite', store => store.delete(id)); renderCaptures();
     }));
   } catch (error) {
     $('#capture-empty').textContent = 'No se pudieron cargar las capturas en este navegador.';
     $('#capture-empty').classList.add('visible');
   }
+}
+async function openLinkedCapture(id) {
+  await showPage('capturas');
+  const card = document.querySelector(`[data-capture-card="${CSS.escape(id)}"]`);
+  if (card) { card.scrollIntoView({ behavior: 'smooth', block: 'center' }); card.classList.add('capture-highlight'); setTimeout(() => card.classList.remove('capture-highlight'), 1800); }
 }
 async function addCaptureFiles(fileList) {
   const files = [...fileList].filter(file => ['image/png', 'image/jpeg', 'image/webp'].includes(file.type));
