@@ -1,7 +1,15 @@
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const STORAGE_KEY = 'bet4fun-bets';
-let bets = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+const initialBets = [{
+  id: 'bet4fun-lakers-jazz-2026-11-18', date: '2026-11-18', eventAt: '2026-11-19T03:00:00.000Z', reviewAfter: '2026-11-19T06:00:00.000Z',
+  event: 'Los Angeles Lakers – Utah Jazz', player: 'Quentin Grimes', sport: 'Baloncesto / NBA', type: 'Surebet', result: 'pending', actualProfit: 0, placed: true, promoEligible: false, promoStatus: 'none',
+  legs: [
+    { bookmaker: 'PokerStars', region: 'ES', selection: 'Superior a 3.5 Prórroga - asistencias', odds: 2.9, stake: 30, profit: 2, humanError: false, errorImpact: 0 },
+    { bookmaker: 'Winamax', region: 'ES', selection: 'Inferior a 3.5 Prórroga - asistencias', odds: 1.58, stake: 55, profit: 1.9, humanError: false, errorImpact: 0 }
+  ]
+}];
+let bets = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null') || initialBets;
 bets = bets.map(bet => ({ ...bet, placed: bet.placed ?? true, promoEligible: bet.promoEligible ?? false, promoStatus: bet.promoStatus || (bet.promoEligible ? 'pending' : 'none'), legs: bet.legs.map(leg => ({ ...leg, humanError: leg.humanError ?? false, errorImpact: Number(leg.errorImpact || 0) })) }));
 localStorage.setItem(STORAGE_KEY, JSON.stringify(bets));
 let captureDbPromise;
