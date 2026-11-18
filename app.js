@@ -1,3 +1,4 @@
+
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const STORAGE_KEY = 'bet4fun-bets';
@@ -22,6 +23,7 @@ const todayKey = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
+const monthKeyNow = () => todayKey().slice(0, 7);
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const openBet = bet => bet.result === 'pending';
 const needsReview = bet => openBet(bet) && Date.now() >= new Date(bet.reviewAfter).getTime();
@@ -78,7 +80,8 @@ function workflowMarkup(bet) {
 function rowMarkup(bet) {
   const isDue = needsReview(bet);
   const capture = bet.captureId ? `<button class="capture-link" data-open-capture="${escapeHtml(bet.captureId)}">Ver captura adjunta</button>` : '';
-  return `<tr class="bet-row ${isDue ? 'due-row' : ''}"><td><div class="bet-title">${escapeHtml(bet.event)}</div><div class="bet-sub">${escapeHtml(bet.player)} · <span class="sport-label"><span aria-hidden="true">${sportEmoji(bet.sport)}</span> ${escapeHtml(bet.sport)}</span> · ${shortDate(bet.eventAt)}</div>${capture}</td><td><span class="type-chip">${escapeHtml(bet.type)}</span></td><td><div class="legs-cell">${legsMarkup(bet)}</div>${reviewActions(bet)}</td><td class="amount">${money(totalStake(bet))}</td><td class="profit-positive">${openBet(bet) ? '+' + money(potential(bet)) : money(bet.actualProfit)}</td><td>${statusMarkup(bet)}</td><td>${workflowMarkup(bet)}</td></tr>`;
+  const noteButton = `<button class="bet-note-button" data-edit-note="${escapeHtml(bet.id)}">${bet.note ? 'Editar nota' : '＋ Añadir nota'}${bet.note ? '<span class="note-saved-mark" aria-label="Tiene una nota">●</span>' : ''}</button>`;
+  return `<tr class="bet-row ${isDue ? 'due-row' : ''}"><td><div class="bet-title">${escapeHtml(bet.event)}</div><div class="bet-sub">${escapeHtml(bet.player)} · <span class="sport-label"><span aria-hidden="true">${sportEmoji(bet.sport)}</span> ${escapeHtml(bet.sport)}</span> · ${shortDate(bet.eventAt)}</div><div class="bet-row-tools">${capture}${noteButton}</div></td><td><span class="type-chip">${escapeHtml(bet.type)}</span></td><td><div class="legs-cell">${legsMarkup(bet)}</div>${reviewActions(bet)}</td><td class="amount">${money(totalStake(bet))}</td><td class="profit-positive">${openBet(bet) ? '+' + money(potential(bet)) : money(bet.actualProfit)}</td><td>${statusMarkup(bet)}</td><td>${workflowMarkup(bet)}</td></tr>`;
 }
 function bindBetActions() {
   $$('[data-review]').forEach(button => button.addEventListener('click', () => settleBet(button.dataset.id, button.dataset.review)));
@@ -92,6 +95,24 @@ function bindBetActions() {
     bet.promoStatus = bet.promoStatus === 'received' ? 'pending' : 'received'; save();
   }));
   $$('[data-open-capture]').forEach(button => button.addEventListener('click', () => openLinkedCapture(button.dataset.openCapture)));
+  $$('[data-edit-note]').forEach(button => button.addEventListener('click', () => editBetNote(button.dataset.editNote)));
+}
+function editBetNote(id) {
+  const bet = bets.find(item => item.id === id); if (!bet) return;
+  const backdrop = document.createElement('div'); backdrop.className = 'analysis-backdrop';
+  backdrop.innerHTML = `<section class="analysis-modal note-modal" role="dialog" aria-modal="true" aria-labelledby="note-title"><div class="modal-head"><div><div class="eyebrow">APUNTE PERSONAL</div><h2 id="note-title">${escapeHtml(bet.event)}</h2></div><button type="button" class="close-button" data-close-note aria-label="Cerrar">×</button></div><p class="analysis-help">Anota lo que quieras recordar: cómo preparaste la surebet, incidencias o algo que quieras revisar más adelante.</p><form class="note-form"><label for="bet-note-text">Nota</label><textarea id="bet-note-text" maxlength="1200" placeholder="Escribe una nota para esta apuesta…">${escapeHtml(bet.note || '')}</textarea><div class="form-actions">${bet.note ? '<button type="button" class="danger-button" data-delete-note>Eliminar nota</button>' : ''}<button type="button" class="secondary-button" data-close-note>Cancelar</button><button type="submit" class="primary-button">Guardar nota</button></div></form></section>`;
+  document.body.append(backdrop);
+  const close = () => backdrop.remove();
+  backdrop.querySelectorAll('[data-close-note]').forEach(button => button.addEventListener('click', close));
+  backdrop.addEventListener('click', event => { if (event.target === backdrop) close(); });
+  backdrop.querySelector('[data-delete-note]')?.addEventListener('click', () => { bet.note = ''; bet.noteCreatedAt = ''; close(); save(); });
+  backdrop.querySelector('form').addEventListener('submit', event => {
+    event.preventDefault(); const value = backdrop.querySelector('textarea').value.trim();
+    if (!value) { backdrop.querySelector('textarea').focus(); return; }
+    if (!bet.note) { bet.noteCreatedAt = new Date().toISOString(); bet.noteMonth = monthKeyNow(); }
+    bet.note = value; close(); save();
+  });
+  backdrop.querySelector('textarea').focus();
 }
 function analyzeBet(id) {
   const bet = bets.find(item => item.id === id); if (!bet) return;
@@ -175,15 +196,30 @@ function renderData() {
   $('#error-donut-rate').textContent = `${errorRate.toLocaleString('es-ES', { maximumFractionDigits: 1 })}%`;
   $('#error-donut-count').textContent = `${errorLegs} de ${legsCount} apuestas`;
   $('#error-impact-visual').textContent = money(errorImpact);
-  $('#bookmaker-rows').innerHTML = houseList.map(([name, item]) => `<tr><td><span class="bookmaker-name">${escapeHtml(name)}</span></td><td>${item.count}</td><td class="amount">${money(item.amount)}</td><td><div class="data-share"><i style="width:${item.amount / maxHouseAmount * 100}%"></i></div></td></tr>`).join('');
-  $('#sport-rows').innerHTML = sportList.map(([sport, item]) => `<tr><td><span class="bookmaker-name"><span class="sport-emoji" aria-hidden="true">${sportEmoji(sport)}</span>${escapeHtml(sport)}</span></td><td>${item.count}</td><td class="profit-positive">${money(item.potential)}</td></tr>`).join('');
-  $('#bookmaker-empty').classList.toggle('visible', !houseList.length);
-  $('#sport-empty').classList.toggle('visible', !sportList.length);
   $('#bookmaker-chart-empty').classList.toggle('visible', !houseList.length);
   $('#sport-chart-empty').classList.toggle('visible', !sportList.length);
   const errors = bets.flatMap(bet => bet.legs.filter(leg => leg.humanError).map(leg => ({ bet, leg })));
   $('#error-history').innerHTML = errors.map(({ bet, leg }) => `<div class="error-row"><span class="error-mark small">!</span><div><b>${escapeHtml(leg.bookmaker)} · ${escapeHtml(leg.selection)}</b><small>${escapeHtml(bet.event)} · ${dayLabel(bet.date)}</small></div><strong>${money(leg.errorImpact)}</strong></div>`).join('');
   $('#error-empty').classList.toggle('visible', !errors.length);
+  renderNoteAnalysis();
+}
+function renderNoteAnalysis() {
+  const picker = $('#notes-month');
+  if (!picker.value) picker.value = todayKey().slice(0, 7);
+  const month = picker.value;
+  const notes = bets.filter(bet => bet.note?.trim() && (bet.noteMonth || (bet.noteCreatedAt ? new Date(bet.noteCreatedAt).toLocaleDateString('sv-SE').slice(0, 7) : '')) === month)
+    .sort((a, b) => new Date(b.noteCreatedAt) - new Date(a.noteCreatedAt));
+  const stopWords = new Set('para como pero porque desde hasta sobre entre esta este estas estos una uno unas unos que con por sin del las los sus han fue son mas muy tambien cada cuando donde esto eso hay sido'.split(' '));
+  const themes = new Map();
+  notes.forEach(bet => {
+    const words = new Set(bet.note.toLocaleLowerCase('es-ES').normalize('NFD').replace(/[\u0300-\u036f]/g, '').match(/[a-z]{4,}/g) || []);
+    words.forEach(word => { if (!stopWords.has(word)) themes.set(word, (themes.get(word) || 0) + 1); });
+  });
+  const repeated = [...themes].filter(([, count]) => count > 1).sort((a, b) => b[1] - a[1]).slice(0, 5);
+  $('#notes-insights').innerHTML = notes.length ? `<div class="notes-summary-card"><div class="notes-summary-number">${notes.length}</div><div><b>${notes.length === 1 ? 'nota guardada' : 'notas guardadas'} en ${escapeHtml(new Date(`${month}-15T12:00:00`).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' }))}</b><p>${repeated.length ? `Temas que se repiten en varias notas: ${repeated.map(([word, count]) => `<span class="note-theme">${escapeHtml(word)} · ${count}</span>`).join(' ')}` : 'Aún no hay palabras clave que se repitan en varias notas.'}</p><small>Conclusiones orientativas a partir de palabras repetidas; revisa el contexto de cada nota.</small></div></div>` : '';
+  $('#notes-list').innerHTML = notes.map(bet => `<article class="saved-note"><div><b>${escapeHtml(bet.event)}</b><small>${escapeHtml(bet.sport || 'Deporte sin especificar')} · ${shortDate(bet.noteCreatedAt)}</small></div><p>${escapeHtml(bet.note)}</p><button type="button" class="text-button" data-edit-note="${escapeHtml(bet.id)}">Editar nota</button></article>`).join('');
+  $('#notes-empty').classList.toggle('visible', !notes.length);
+  $$('#notes-list [data-edit-note]').forEach(button => button.addEventListener('click', () => editBetNote(button.dataset.editNote)));
 }
 function updateDashboard() {
   const today = todayKey(), todayBets = bets.filter(b => b.date === today);
@@ -244,6 +280,7 @@ $('#bet-form').addEventListener('submit', e => {
   save(); e.currentTarget.reset(); closeModal(); const toast = $('#toast'); toast.textContent = 'Surebet guardada'; toast.classList.add('show'); setTimeout(() => toast.classList.remove('show'), 2400);
 });
 $('#filter-type').addEventListener('change', renderRows);
+$('#notes-month').addEventListener('change', renderNoteAnalysis);
 showPage(location.hash.slice(1) && $(`#page-${location.hash.slice(1)}`) ? location.hash.slice(1) : 'dashboard');
 updateDashboard(); setInterval(updateDashboard, 30000);
 
