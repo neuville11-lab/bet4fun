@@ -418,7 +418,7 @@ function parseCaptureBet(words, rawText, imageWidth) {
       oddsWord = numeric[0]; stakeWord = numeric[1]; profitWord = numeric.length > 2 ? numeric.at(-1) : null;
     }
     if (!oddsWord || !stakeWord) return;
-    const bookmaker = line.words.slice(0, directionIndex).map(word => word.text).filter(word => !/^\\(?[A-Z]{2}\\)?$/i.test(word.text || '') && !/^[^\\p{L}\\p{N}]+$/u.test(word.text)).join(' ').trim();
+    const bookmaker = line.words.slice(0, directionIndex).map(word => word.text).filter(word => !/^\\(?[A-Z]{2}\\)?$/i.test(word) && !/^[^\\p{L}\\p{N}]+$/u.test(word)).join(' ').trim();
     const selection = line.words.slice(directionIndex, oddsWord.index).map(word => word.text).join(' ').trim();
     legRows.push({ bookmaker, selection, odds: oddsWord.value, stake: stakeWord.value, profit: profitWord?.value || '', direction: directionWord });
   });
