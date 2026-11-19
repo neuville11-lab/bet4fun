@@ -368,45 +368,58 @@ function groupOcrLines(words) {
   const lines = [];
   ordered.forEach(word => {
     const y = (word.bbox.y0 + word.bbox.y1) / 2;
-    let line = lines.find(item => Math.abs(item.y - y) < Math.max(8, (word.bbox.y1 - word.bbox.y0) * 0.65));
-    if (!line) { line = { y, words: [] }; lines.push(line); }
+    const height = word.bbox.y1 - word.bbox.y0;
+    let line = lines.find(item => Math.abs(item.y - y) < Math.max(12, Math.min(height, item.height) * 0.7));
+    if (!line) { line = { y, height, words: [] }; lines.push(line); }
     line.words.push(word);
     line.y = line.words.reduce((sum, item) => sum + (item.bbox.y0 + item.bbox.y1) / 2, 0) / line.words.length;
+    line.height = line.words.reduce((sum, item) => sum + item.bbox.y1 - item.bbox.y0, 0) / line.words.length;
   });
-  return lines.map(line => ({ words: line.words.sort((a, b) => a.bbox.x0 - b.bbox.x0), text: line.words.sort((a, b) => a.bbox.x0 - b.bbox.x0).map(word => word.text).join(' ') }));
+  return lines.sort((a, b) => a.y - b.y).map(line => {
+    const sorted = line.words.sort((a, b) => a.bbox.x0 - b.bbox.x0);
+    return { words: sorted, text: sorted.map(word => word.text).join(' ') };
+  });
 }
 function titleCaseName(value) {
-  const parts = String(value || '').trim().split(/\s+/).filter(Boolean);
+  const parts = String(value || '').trim().split(/\\s+/).filter(Boolean);
   if (parts.length === 2 && parts[0] === parts[0].toLocaleUpperCase('es-ES') && parts[1] !== parts[1].toLocaleUpperCase('es-ES')) parts.reverse();
   return parts.map(part => part.charAt(0).toLocaleUpperCase('es-ES') + part.slice(1).toLocaleLowerCase('es-ES')).join(' ');
 }
-function parseCaptureBet(words, rawText) {
+function parseCaptureBet(words, rawText, imageWidth) {
   const lines = groupOcrLines(words);
-  const clean = value => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-  const allText = String(rawText || lines.map(line => line.text).join('\n'));
-  const dateMatch = allText.match(/\b(20\d{2})[-/.](\d{1,2})[-/.](\d{1,2})\D{0,12}(\d{1,2}):(\d{2})/);
-  const eventIndex = lines.findIndex(line => /\s(?:vs\.?|[-–—])\s/i.test(line.text) && line.text.length > 9 && !/superior|inferior|over|under|mas de|menos de/i.test(line.text));
-  const event = eventIndex >= 0 ? lines[eventIndex].text.replace(/\s+/g, ' ').trim() : '';
-  const heading = eventIndex > 0 ? lines.slice(0, eventIndex).reverse().find(line => line.text.trim() && !/\d{4}[-/.]\d{1,2}[-/.]\d{1,2}|evento en|cuota|apuesta|roi/i.test(line.text))?.text : '';
+  const clean = value => String(value || '').normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').toLowerCase();
+  const allText = String(rawText || lines.map(line => line.text).join('\\n'));
+  const dateMatch = allText.match(/\\b(20\\d{2})[-/.](\\d{1,2})[-/.](\\d{1,2})\\D{0,12}(\\d{1,2}):(\\d{2})/);
+  const eventIndex = lines.findIndex(line => /\\s(?:vs\\.?|[-–—])\\s/i.test(line.text) && line.text.length > 9 && !/superior|inferior|over|under|mas de|menos de/i.test(line.text));
+  const event = eventIndex >= 0 ? lines[eventIndex].text.replace(/\\s+/g, ' ').trim() : '';
+  const heading = eventIndex > 0 ? lines.slice(0, eventIndex).reverse().find(line => line.text.trim() && !/\\d{4}[-/.]\\d{1,2}[-/.]\\d{1,2}|evento en|cuota|apuesta|roi/i.test(line.text))?.text : '';
   const player = heading && !/baloncesto|basket|futbol|football|tenis|tennis|nba|liga/i.test(heading) ? titleCaseName(heading) : '';
   const sport = lines.find(line => /baloncesto|basketball|futbol|football|soccer|tenis|tennis|nba|laliga|premier/i.test(clean(line.text)))?.text || '';
   const date = dateMatch ? `${dateMatch[1]}-${dateMatch[2].padStart(2, '0')}-${dateMatch[3].padStart(2, '0')}` : '';
   const eventAt = dateMatch ? `${date}T${dateMatch[4].padStart(2, '0')}:${dateMatch[5]}` : '';
+  const width = Number(imageWidth) || 1;
   const legRows = [];
   lines.forEach(line => {
     const directionIndex = line.words.findIndex(word => /^(superior|inferior|over|under|mas|menos)$/i.test(clean(word.text)));
     if (directionIndex < 0) return;
-    const thresholdIndex = line.words.findIndex((word, index) => index > directionIndex && /^\d+(?:[.,]\d+)?$/.test(word.text.replace(/[^\d.,]/g, '')));
-    if (thresholdIndex < 0) return;
-    const numericWords = line.words.map((word, index) => ({ word, index, value: word.text.replace(',', '.') })).filter(item => item.index > thresholdIndex && /^\d+(?:\.\d+)?$/.test(item.value));
-    if (numericWords.length < 2) return;
     const directionWord = clean(line.words[directionIndex].text);
-    const selectionStart = directionIndex;
-    const oddsWord = numericWords[0];
-    const stakeWord = numericWords[1];
-    const profitWord = numericWords.length > 2 ? numericWords[numericWords.length - 1] : null;
-    const bookmaker = line.words.slice(0, selectionStart).map(word => word.text).filter(word => !/^\(?[A-Z]{2}\)?$/i.test(word) && !/^[^\p{L}\p{N}]+$/u.test(word)).join(' ').trim();
-    const selection = line.words.slice(selectionStart, oddsWord.index).map(word => word.text).join(' ').trim();
+    const thresholdIndex = line.words.findIndex((word, index) => index > directionIndex && /^\\d+(?:[.,]\\d+)?$/.test(word.text.replace(/[^\\d.,]/g, '')));
+    if (thresholdIndex < 0) return;
+    const coords = line.words.map((word, index) => ({
+      word, index, x: ((word.bbox.x0 + word.bbox.x1) / 2) / width,
+      value: word.text.replace(/[^\\d.,]/g, '').replace(',', '.')
+    }));
+    const numeric = coords.filter(item => item.index > thresholdIndex && /^\\d+(?:\\.\\d+)?$/.test(item.value));
+    const inBand = (low, high) => numeric.filter(item => item.x >= low && item.x < high);
+    let oddsWord = inBand(0.27, 0.39)[0];
+    let stakeWord = inBand(0.39, 0.56)[0];
+    let profitWord = numeric.filter(item => item.x >= 0.56).at(-1);
+    if (!oddsWord || !stakeWord) {
+      oddsWord = numeric[0]; stakeWord = numeric[1]; profitWord = numeric.length > 2 ? numeric.at(-1) : null;
+    }
+    if (!oddsWord || !stakeWord) return;
+    const bookmaker = line.words.slice(0, directionIndex).map(word => word.text).filter(word => !/^\\(?[A-Z]{2}\\)?$/i.test(word.text || '') && !/^[^\\p{L}\\p{N}]+$/u.test(word.text)).join(' ').trim();
+    const selection = line.words.slice(directionIndex, oddsWord.index).map(word => word.text).join(' ').trim();
     legRows.push({ bookmaker, selection, odds: oddsWord.value, stake: stakeWord.value, profit: profitWord?.value || '', direction: directionWord });
   });
   const fields = { event, player, sport, eventAt };
@@ -420,20 +433,54 @@ function parseCaptureBet(words, rawText) {
   });
   return { fields, legCount: legRows.length, lines, text: allText };
 }
+async function prepareCaptureImage(blob) {
+  const bitmap = await createImageBitmap(blob);
+  const scale = Math.min(3, Math.max(2, 2200 / bitmap.width));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(bitmap.width * scale);
+  canvas.height = Math.round(bitmap.height * scale);
+  const context = canvas.getContext('2d', { willReadFrequently: true });
+  context.fillStyle = '#fff';
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = 'high';
+  context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  bitmap.close?.();
+  const image = context.getImageData(0, 0, canvas.width, canvas.height);
+  for (let i = 0; i < image.data.length; i += 4) {
+    const gray = image.data[i] * 0.299 + image.data[i + 1] * 0.587 + image.data[i + 2] * 0.114;
+    const contrast = Math.max(0, Math.min(255, (gray - 128) * 1.24 + 128));
+    image.data[i] = image.data[i + 1] = image.data[i + 2] = contrast;
+  }
+  context.putImageData(image, 0, 0);
+  return { canvas, originalWidth: canvas.width / scale };
+}
 async function readCapture(file) {
   const tesseract = await loadTesseract();
-  const imageUrl = URL.createObjectURL(file.blob);
   let worker;
   try {
+    const { canvas, originalWidth } = await prepareCaptureImage(file.blob);
     worker = await tesseract.createWorker('spa+eng', 1, { logger: message => {
-      if (message.status === 'recognizing text' && Number.isFinite(message.progress)) showCaptureToast(`Leyendo captura · ${Math.round(message.progress * 100)}%`);
+      if (message.status === 'recognizing text' && Number.isFinite(message.progress)) showCaptureToast(`Mejorando lectura · ${Math.round(message.progress * 100)}%`);
       else if (message.status === 'loading language traineddata') showCaptureToast('Preparando lectura de texto…');
     } });
-    const result = await worker.recognize(imageUrl);
-    return parseCaptureBet(result.data.words, result.data.text);
+    await worker.setParameters({ preserve_interword_spaces: '1', user_defined_dpi: '220' });
+    const results = [];
+    for (const mode of ['11', '6']) {
+      await worker.setParameters({ tessedit_pageseg_mode: mode });
+      const result = await worker.recognize(canvas);
+      const parsed = parseCaptureBet(result.data.words, result.data.text, canvas.width);
+      const text = String(result.data.text || '');
+      const score = parsed.legCount * 100 + (parsed.fields.event ? 25 : 0) +
+        (parsed.fields.bookmaker1 ? 12 : 0) + (parsed.fields.bookmaker2 ? 12 : 0) +
+        (parsed.fields.stake1 ? 6 : 0) + (parsed.fields.stake2 ? 6 : 0) +
+        Math.min(20, Math.round(Number(result.data.confidence || 0) / 5)) +
+        (/\\b(?:apuesta|cuota|beneficio)\\b/i.test(text) ? 3 : 0);
+      results.push({ parsed, score });
+    }
+    return results.sort((a, b) => b.score - a.score)[0].parsed;
   } finally {
     if (worker) await worker.terminate();
-    URL.revokeObjectURL(imageUrl);
   }
 }
 async function renderCaptures() {
