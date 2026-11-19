@@ -18,6 +18,7 @@ let captureDbPromise;
 let captureObjectUrls = [];
 let pendingCaptureId = null;
 let pendingCaptureName = '';
+let pendingCaptureOcrText = '';
 
 const money = value => new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(Number(value) || 0);
 const todayKey = () => {
@@ -271,17 +272,22 @@ function settleBet(id, result) {
   }
   bet.result = result; bet.actualProfit = actualProfit; bet.verifiedAt = new Date().toISOString(); save();
 }
-function openModal() {
+function openModal(prefill = {}) {
   const form = $('#bet-form'); form.reset(); form.elements.date.value = todayKey();
   const soon = new Date(Date.now() + 3600000); soon.setMinutes(0, 0, 0);
   form.elements.eventAt.value = `${soon.getFullYear()}-${String(soon.getMonth() + 1).padStart(2, '0')}-${String(soon.getDate()).padStart(2, '0')}T${String(soon.getHours()).padStart(2, '0')}:00`;
+  Object.entries(prefill).forEach(([name, value]) => { if (value !== undefined && value !== '' && form.elements[name]) form.elements[name].value = value; });
   let hint = $('#capture-link-hint');
   if (!hint) { hint = document.createElement('div'); hint.id = 'capture-link-hint'; hint.className = 'form-hint capture-linked-hint'; form.prepend(hint); }
   hint.hidden = !pendingCaptureId;
-  hint.textContent = pendingCaptureId ? `La captura «${pendingCaptureName}» quedará adjunta a esta apuesta.` : '';
+  hint.textContent = pendingCaptureId ? `La captura «${pendingCaptureName}» quedará adjunta. Revisa los datos reconocidos antes de guardar.` : '';
+  let ocrSummary = $('#capture-ocr-summary');
+  if (!ocrSummary) { ocrSummary = document.createElement('details'); ocrSummary.id = 'capture-ocr-summary'; ocrSummary.className = 'capture-ocr-summary'; hint.after(ocrSummary); }
+  ocrSummary.hidden = !pendingCaptureOcrText;
+  ocrSummary.innerHTML = pendingCaptureOcrText ? `<summary>Ver texto leído de la captura</summary><pre>${escapeHtml(pendingCaptureOcrText)}</pre>` : '';
   $('#modal').classList.add('open'); $('#modal').setAttribute('aria-hidden', 'false'); form.elements.event.focus();
 }
-function closeModal() { $('#modal').classList.remove('open'); $('#modal').setAttribute('aria-hidden', 'true'); pendingCaptureId = null; pendingCaptureName = ''; }
+function closeModal() { $('#modal').classList.remove('open'); $('#modal').setAttribute('aria-hidden', 'true'); pendingCaptureId = null; pendingCaptureName = ''; pendingCaptureOcrText = ''; }
 function showPage(name) {
   $$('.page').forEach(page => page.classList.toggle('active-page', page.id === `page-${name}`));
   $$('.nav-item').forEach(link => link.classList.toggle('active', link.dataset.page === name));
@@ -342,6 +348,94 @@ async function captureRequest(mode, action) {
     tx.onerror = () => reject(tx.error);
   });
 }
+function showCaptureToast(message) {
+  const toast = $('#toast'); toast.textContent = message; toast.classList.add('show');
+}
+let tesseractPromise;
+function loadTesseract() {
+  if (window.Tesseract) return Promise.resolve(window.Tesseract);
+  if (!tesseractPromise) tesseractPromise = new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+    script.onload = () => window.Tesseract ? resolve(window.Tesseract) : reject(new Error('No se pudo iniciar el lector de imágenes.'));
+    script.onerror = () => reject(new Error('No se pudo cargar el lector de imágenes.'));
+    document.head.append(script);
+  });
+  return tesseractPromise;
+}
+function groupOcrLines(words) {
+  const ordered = (words || []).filter(word => word.text?.trim() && word.bbox).slice().sort((a, b) => a.bbox.y0 - b.bbox.y0 || a.bbox.x0 - b.bbox.x0);
+  const lines = [];
+  ordered.forEach(word => {
+    const y = (word.bbox.y0 + word.bbox.y1) / 2;
+    let line = lines.find(item => Math.abs(item.y - y) < Math.max(8, (word.bbox.y1 - word.bbox.y0) * 0.65));
+    if (!line) { line = { y, words: [] }; lines.push(line); }
+    line.words.push(word);
+    line.y = line.words.reduce((sum, item) => sum + (item.bbox.y0 + item.bbox.y1) / 2, 0) / line.words.length;
+  });
+  return lines.map(line => ({ words: line.words.sort((a, b) => a.bbox.x0 - b.bbox.x0), text: line.words.sort((a, b) => a.bbox.x0 - b.bbox.x0).map(word => word.text).join(' ') }));
+}
+function titleCaseName(value) {
+  const parts = String(value || '').trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 2 && parts[0] === parts[0].toLocaleUpperCase('es-ES') && parts[1] !== parts[1].toLocaleUpperCase('es-ES')) parts.reverse();
+  return parts.map(part => part.charAt(0).toLocaleUpperCase('es-ES') + part.slice(1).toLocaleLowerCase('es-ES')).join(' ');
+}
+function parseCaptureBet(words, rawText) {
+  const lines = groupOcrLines(words);
+  const clean = value => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const allText = String(rawText || lines.map(line => line.text).join('\n'));
+  const dateMatch = allText.match(/\b(20\d{2})[-/.](\d{1,2})[-/.](\d{1,2})\D{0,12}(\d{1,2}):(\d{2})/);
+  const eventIndex = lines.findIndex(line => /\s(?:vs\.?|[-–—])\s/i.test(line.text) && line.text.length > 9 && !/superior|inferior|over|under|mas de|menos de/i.test(line.text));
+  const event = eventIndex >= 0 ? lines[eventIndex].text.replace(/\s+/g, ' ').trim() : '';
+  const heading = eventIndex > 0 ? lines.slice(0, eventIndex).reverse().find(line => line.text.trim() && !/\d{4}[-/.]\d{1,2}[-/.]\d{1,2}|evento en|cuota|apuesta|roi/i.test(line.text))?.text : '';
+  const player = heading && !/baloncesto|basket|futbol|football|tenis|tennis|nba|liga/i.test(heading) ? titleCaseName(heading) : '';
+  const sport = lines.find(line => /baloncesto|basketball|futbol|football|soccer|tenis|tennis|nba|laliga|premier/i.test(clean(line.text)))?.text || '';
+  const date = dateMatch ? `${dateMatch[1]}-${dateMatch[2].padStart(2, '0')}-${dateMatch[3].padStart(2, '0')}` : '';
+  const eventAt = dateMatch ? `${date}T${dateMatch[4].padStart(2, '0')}:${dateMatch[5]}` : '';
+  const legRows = [];
+  lines.forEach(line => {
+    const directionIndex = line.words.findIndex(word => /^(superior|inferior|over|under|mas|menos)$/i.test(clean(word.text)));
+    if (directionIndex < 0) return;
+    const thresholdIndex = line.words.findIndex((word, index) => index > directionIndex && /^\d+(?:[.,]\d+)?$/.test(word.text.replace(/[^\d.,]/g, '')));
+    if (thresholdIndex < 0) return;
+    const numericWords = line.words.map((word, index) => ({ word, index, value: word.text.replace(',', '.') })).filter(item => item.index > thresholdIndex && /^\d+(?:\.\d+)?$/.test(item.value));
+    if (numericWords.length < 2) return;
+    const directionWord = clean(line.words[directionIndex].text);
+    const selectionStart = directionIndex;
+    const oddsWord = numericWords[0];
+    const stakeWord = numericWords[1];
+    const profitWord = numericWords.length > 2 ? numericWords[numericWords.length - 1] : null;
+    const bookmaker = line.words.slice(0, selectionStart).map(word => word.text).filter(word => !/^\(?[A-Z]{2}\)?$/i.test(word) && !/^[^\p{L}\p{N}]+$/u.test(word)).join(' ').trim();
+    const selection = line.words.slice(selectionStart, oddsWord.index).map(word => word.text).join(' ').trim();
+    legRows.push({ bookmaker, selection, odds: oddsWord.value, stake: stakeWord.value, profit: profitWord?.value || '', direction: directionWord });
+  });
+  const fields = { event, player, sport, eventAt };
+  legRows.slice(0, 2).forEach((leg, index) => {
+    const number = index + 1;
+    fields[`bookmaker${number}`] = leg.bookmaker;
+    fields[`selection${number}`] = leg.selection;
+    fields[`odds${number}`] = leg.odds;
+    fields[`stake${number}`] = leg.stake;
+    fields[`profit${number}`] = leg.profit;
+  });
+  return { fields, legCount: legRows.length, lines, text: allText };
+}
+async function readCapture(file) {
+  const tesseract = await loadTesseract();
+  const imageUrl = URL.createObjectURL(file.blob);
+  let worker;
+  try {
+    worker = await tesseract.createWorker('spa+eng', 1, { logger: message => {
+      if (message.status === 'recognizing text' && Number.isFinite(message.progress)) showCaptureToast(`Leyendo captura · ${Math.round(message.progress * 100)}%`);
+      else if (message.status === 'loading language traineddata') showCaptureToast('Preparando lectura de texto…');
+    } });
+    const result = await worker.recognize(imageUrl);
+    return parseCaptureBet(result.data.words, result.data.text);
+  } finally {
+    if (worker) await worker.terminate();
+    URL.revokeObjectURL(imageUrl);
+  }
+}
 async function renderCaptures() {
   const grid = $('#capture-grid'); if (!grid) return;
   try {
@@ -358,7 +452,19 @@ async function renderCaptures() {
     $$('[data-incorporate-capture]').forEach(button => button.addEventListener('click', async () => {
       const file = await captureRequest('readonly', store => store.get(button.dataset.incorporateCapture));
       if (!file) return;
-      pendingCaptureId = file.id; pendingCaptureName = file.name; openModal();
+      pendingCaptureId = file.id; pendingCaptureName = file.name;
+      showCaptureToast('Analizando la captura…');
+      try {
+        const extracted = await readCapture(file);
+        pendingCaptureOcrText = extracted.text;
+        openModal(extracted.fields);
+        const complete = extracted.fields.event && extracted.fields.bookmaker1 && extracted.fields.bookmaker2;
+        showCaptureToast(complete ? 'Datos leídos. Revísalos antes de guardar.' : 'Lectura parcial: completa o corrige los campos que falten.');
+      } catch (error) {
+        pendingCaptureOcrText = '';
+        openModal();
+        showCaptureToast('No se pudo leer la imagen. Puedes rellenar la apuesta manualmente.');
+      }
     }));
     $$('[data-open-bet-capture]').forEach(button => button.addEventListener('click', () => openLinkedCapture(button.dataset.openBetCapture)));
     $$('[data-delete-capture]').forEach(button => button.addEventListener('click', async () => {
