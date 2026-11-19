@@ -393,14 +393,18 @@ function parseCaptureBet(words, rawText, imageWidth) {
   const eventIndex = lines.findIndex(line => /\\s(?:vs\\.?|[-–—])\\s/i.test(line.text) && line.text.length > 9 && !/superior|inferior|over|under|mas de|menos de/i.test(line.text));
   const event = eventIndex >= 0 ? lines[eventIndex].text.replace(/\\s+/g, ' ').trim() : '';
   const heading = eventIndex > 0 ? lines.slice(0, eventIndex).reverse().find(line => line.text.trim() && !/\\d{4}[-/.]\\d{1,2}[-/.]\\d{1,2}|evento en|cuota|apuesta|roi/i.test(line.text))?.text : '';
-  const player = heading && !/baloncesto|basket|futbol|football|tenis|tennis|nba|liga/i.test(heading) ? titleCaseName(heading) : '';
+  const headingWords = String(heading || '').trim().split(/\\s+/).filter(Boolean);
+  const plausiblePlayer = headingWords.length >= 2 && headingWords.length <= 3 &&
+    headingWords.every(word => /^[\\p{L}][\\p{L}'’.-]*$/u.test(word)) &&
+    !/baloncesto|basket|futbol|football|tenis|tennis|nba|liga|champions|league|total|superior|inferior|servette|barcelona/i.test(heading);
+  const player = plausiblePlayer ? titleCaseName(heading) : '';
   const sport = lines.find(line => /baloncesto|basketball|futbol|football|soccer|tenis|tennis|nba|laliga|premier/i.test(clean(line.text)))?.text || '';
   const date = dateMatch ? `${dateMatch[1]}-${dateMatch[2].padStart(2, '0')}-${dateMatch[3].padStart(2, '0')}` : '';
   const eventAt = dateMatch ? `${date}T${dateMatch[4].padStart(2, '0')}:${dateMatch[5]}` : '';
   const width = Number(imageWidth) || 1;
   const legRows = [];
   lines.forEach(line => {
-    const directionIndex = line.words.findIndex(word => /^(superior|inferior|over|under|mas|menos)$/i.test(clean(word.text)));
+    const directionIndex = line.words.findIndex(word => /^(total|superior|inferior|over|under|mas|menos|mayor|menor)$/i.test(clean(word.text)));
     if (directionIndex < 0) return;
     const directionWord = clean(line.words[directionIndex].text);
     const thresholdIndex = line.words.findIndex((word, index) => index > directionIndex && /^\\d+(?:[.,]\\d+)?$/.test(word.text.replace(/[^\\d.,]/g, '')));
