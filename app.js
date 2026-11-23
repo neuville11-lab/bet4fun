@@ -381,21 +381,21 @@ function groupOcrLines(words) {
   });
 }
 function titleCaseName(value) {
-  const parts = String(value || '').trim().split(/\\s+/).filter(Boolean);
+  const parts = String(value || '').trim().split(/\s+/).filter(Boolean);
   if (parts.length === 2 && parts[0] === parts[0].toLocaleUpperCase('es-ES') && parts[1] !== parts[1].toLocaleUpperCase('es-ES')) parts.reverse();
   return parts.map(part => part.charAt(0).toLocaleUpperCase('es-ES') + part.slice(1).toLocaleLowerCase('es-ES')).join(' ');
 }
 function parseCaptureBet(words, rawText, imageWidth) {
   const lines = groupOcrLines(words);
-  const clean = value => String(value || '').normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').toLowerCase();
-  const allText = String(rawText || lines.map(line => line.text).join('\\n'));
-  const dateMatch = allText.match(/\\b(20\\d{2})[-/.](\\d{1,2})[-/.](\\d{1,2})\\D{0,12}(\\d{1,2}):(\\d{2})/);
-  const eventIndex = lines.findIndex(line => /\\s(?:vs\\.?|[-–—])\\s/i.test(line.text) && line.text.length > 9 && !/superior|inferior|over|under|mas de|menos de/i.test(line.text));
-  const event = eventIndex >= 0 ? lines[eventIndex].text.replace(/\\s+/g, ' ').trim() : '';
-  const heading = eventIndex > 0 ? lines.slice(0, eventIndex).reverse().find(line => line.text.trim() && !/\\d{4}[-/.]\\d{1,2}[-/.]\\d{1,2}|evento en|cuota|apuesta|roi/i.test(line.text))?.text : '';
-  const headingWords = String(heading || '').trim().split(/\\s+/).filter(Boolean);
+  const clean = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const allText = String(rawText || lines.map(line => line.text).join('\n'));
+  const dateMatch = allText.match(/\b(20\d{2})[-/.](\d{1,2})[-/.](\d{1,2})\D{0,12}(\d{1,2}):(\d{2})/);
+  const eventIndex = lines.findIndex(line => /\s(?:vs\.?|[-–—])\s/i.test(line.text) && line.text.length > 9 && !/superior|inferior|over|under|mas de|menos de/i.test(line.text));
+  const event = eventIndex >= 0 ? lines[eventIndex].text.replace(/\s+/g, ' ').trim() : '';
+  const heading = eventIndex > 0 ? lines.slice(0, eventIndex).reverse().find(line => line.text.trim() && !/\d{4}[-/.]\d{1,2}[-/.]\d{1,2}|evento en|cuota|apuesta|roi/i.test(line.text))?.text : '';
+  const headingWords = String(heading || '').trim().split(/\s+/).filter(Boolean);
   const plausiblePlayer = headingWords.length >= 2 && headingWords.length <= 3 &&
-    headingWords.every(word => /^[\\p{L}][\\p{L}'’.-]*$/u.test(word)) &&
+    headingWords.every(word => /^[\p{L}][\p{L}'’.-]*$/u.test(word)) &&
     !/baloncesto|basket|futbol|football|tenis|tennis|nba|liga|champions|league|total|superior|inferior|servette|barcelona/i.test(heading);
   const player = plausiblePlayer ? titleCaseName(heading) : '';
   const sport = lines.find(line => /baloncesto|basketball|futbol|football|soccer|tenis|tennis|nba|laliga|premier/i.test(clean(line.text)))?.text || '';
@@ -407,13 +407,13 @@ function parseCaptureBet(words, rawText, imageWidth) {
     const directionIndex = line.words.findIndex(word => /^(total|superior|inferior|over|under|mas|menos|mayor|menor)$/i.test(clean(word.text)));
     if (directionIndex < 0) return;
     const directionWord = clean(line.words[directionIndex].text);
-    const thresholdIndex = line.words.findIndex((word, index) => index > directionIndex && /^\\d+(?:[.,]\\d+)?$/.test(word.text.replace(/[^\\d.,]/g, '')));
+    const thresholdIndex = line.words.findIndex((word, index) => index > directionIndex && /^\d+(?:[.,]\d+)?$/.test(word.text.replace(/[^\d.,]/g, '')));
     if (thresholdIndex < 0) return;
     const coords = line.words.map((word, index) => ({
       word, index, x: ((word.bbox.x0 + word.bbox.x1) / 2) / width,
-      value: word.text.replace(/[^\\d.,]/g, '').replace(',', '.')
+      value: word.text.replace(/[^\d.,]/g, '').replace(',', '.')
     }));
-    const numeric = coords.filter(item => item.index > thresholdIndex && /^\\d+(?:\\.\\d+)?$/.test(item.value));
+    const numeric = coords.filter(item => item.index > thresholdIndex && /^\d+(?:\.\d+)?$/.test(item.value));
     const inBand = (low, high) => numeric.filter(item => item.x >= low && item.x < high);
     let oddsWord = inBand(0.27, 0.39)[0];
     let stakeWord = inBand(0.39, 0.56)[0];
@@ -422,7 +422,7 @@ function parseCaptureBet(words, rawText, imageWidth) {
       oddsWord = numeric[0]; stakeWord = numeric[1]; profitWord = numeric.length > 2 ? numeric.at(-1) : null;
     }
     if (!oddsWord || !stakeWord) return;
-    const bookmaker = line.words.slice(0, directionIndex).map(word => word.text).filter(word => !/^\\(?[A-Z]{2}\\)?$/i.test(word) && !/^[^\\p{L}\\p{N}]+$/u.test(word)).join(' ').trim();
+    const bookmaker = line.words.slice(0, directionIndex).map(word => word.text).filter(word => !/^\(?[A-Z]{2}\)?$/i.test(word) && !/^[^\p{L}\p{N}]+$/u.test(word)).join(' ').trim();
     const selection = line.words.slice(directionIndex, oddsWord.index).map(word => word.text).join(' ').trim();
     legRows.push({ bookmaker, selection, odds: oddsWord.value, stake: stakeWord.value, profit: profitWord?.value || '', direction: directionWord });
   });
