@@ -1,0 +1,10 @@
+# User screenshots attached during development are private local data.
+.codex-attachments/
+
+# Local-only credentials/configuration files.
+.env
+.env.*
+!*.example
+
+.local-review/
+

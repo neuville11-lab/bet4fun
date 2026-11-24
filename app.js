@@ -2,18 +2,16 @@ const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const STORAGE_KEY = 'bet4fun-bets';
 const PROFILE_KEY = 'bet4fun-profile';
-const initialBets = [{
-  id: 'bet4fun-lakers-jazz-2026-11-18', date: '2026-11-18', eventAt: '2026-11-19T03:00:00.000Z', reviewAfter: '2026-11-19T06:00:00.000Z',
-  event: 'Los Angeles Lakers – Utah Jazz', player: 'Quentin Grimes', sport: 'Baloncesto / NBA', type: 'Surebet', result: 'pending', actualProfit: 0, placed: true, promoEligible: false, promoStatus: 'none',
-  legs: [
-    { bookmaker: 'PokerStars', region: 'ES', selection: 'Superior a 3.5 Prórroga - asistencias', odds: 2.9, stake: 30, profit: 2, humanError: false, errorImpact: 0 },
-    { bookmaker: 'Winamax', region: 'ES', selection: 'Inferior a 3.5 Prórroga - asistencias', odds: 1.58, stake: 55, profit: 1.9, humanError: false, errorImpact: 0 }
-  ]
-}];
-let bets = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null') || initialBets;
+const LEGACY_SAMPLE_ID = 'bet4fun-lakers-jazz-2026-11-18';
+const savedBets = (() => { try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); } catch { return []; } })();
+const legacyLocalBets = Array.isArray(savedBets) ? savedBets.filter(bet => bet.id !== LEGACY_SAMPLE_ID) : [];
+let bets = legacyLocalBets;
 let profile = JSON.parse(localStorage.getItem(PROFILE_KEY) || 'null') || { displayName: 'Mi cuenta', email: '', initials: '' };
 bets = bets.map(bet => ({ ...bet, placed: bet.placed ?? true, promoEligible: bet.promoEligible ?? false, promoStatus: bet.promoStatus || (bet.promoEligible ? 'pending' : 'none'), legs: bet.legs.map(leg => ({ ...leg, humanError: leg.humanError ?? false, errorImpact: Number(leg.errorImpact || 0) })) }));
 localStorage.setItem(STORAGE_KEY, JSON.stringify(bets));
+const supabaseConfigReady = Boolean(window.BET4FUN_SUPABASE_URL && window.BET4FUN_SUPABASE_ANON_KEY);
+let cloud = null, cloudUser = null, cloudQueue = Promise.resolve(), cloudLoaded = false;
+if (supabaseConfigReady) { document.body.classList.add('cloud-configured'); $('#cloud-gate').hidden = false; }
 let captureDbPromise;
 let captureObjectUrls = [];
 let pendingCaptureId = null;
@@ -70,6 +68,83 @@ function renderProfile() {
   $('#profile-avatar').textContent = profileInitials();
   $('#profile-edit-top').textContent = profileInitials();
 }
+function setCloudStatus(message, isError = false) {
+  const status = $('#cloud-status'); if (!status) return;
+  status.textContent = message;
+  status.classList.toggle('cloud-error', isError);
+  status.classList.toggle('cloud-online', !isError && Boolean(cloudUser));
+  status.classList.toggle('local-mode', !cloudUser);
+  const button = $('#cloud-account');
+  if (button) button.textContent = cloudUser ? 'Salir' : 'Conectar cuenta';
+  const footer = $('#footer-storage-note');
+  if (footer) footer.textContent = cloudUser ? 'Tus apuestas están sincronizadas con tu cuenta' : supabaseConfigReady ? 'Inicia sesión para sincronizar tus apuestas' : 'Los datos todavía se guardan en este dispositivo';
+}
+function showCloudGate(message = 'Inicia sesión con Google para cargar tus apuestas privadas.', error = false) {
+  const gate = $('#cloud-gate'); if (!gate) return;
+  gate.hidden = false;
+  $('#cloud-gate-message').textContent = message;
+  $('#cloud-gate-message').classList.toggle('cloud-error-text', error);
+  document.body.classList.add('cloud-locked');
+}
+function hideCloudGate() {
+  $('#cloud-gate').hidden = true;
+  document.body.classList.remove('cloud-locked');
+}
+async function loginWithGoogle() {
+  if (!supabaseConfigReady) {
+    window.alert('Falta configurar BET4FUN_SUPABASE_URL y BET4FUN_SUPABASE_ANON_KEY en supabase-config.js.');
+    return;
+  }
+  const { error } = await cloud.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: location.origin + location.pathname } });
+  if (error) { showCloudGate(`No se pudo iniciar sesión: ${error.message}`, true); setCloudStatus('Error al conectar', true); }
+}
+async function syncBetsToCloud() {
+  if (!cloudUser || !cloudLoaded) return;
+  if (!bets.length) { setCloudStatus('Sincronizado con la nube'); return; }
+  const rows = bets.map(bet => ({ user_id: cloudUser.id, id: String(bet.id), payload: bet, updated_at: new Date().toISOString() }));
+  const { error } = await cloud.from('bets').upsert(rows, { onConflict: 'user_id,id' });
+  if (error) throw error;
+  localStorage.setItem(`${STORAGE_KEY}:${cloudUser.id}`, JSON.stringify(bets));
+  setCloudStatus('Sincronizado con la nube');
+}
+async function acceptCloudSession(session) {
+  const user = session?.user;
+  if (!user) {
+    cloudUser = null; cloudLoaded = false; bets = [];
+    updateDashboard(); showCloudGate('Inicia sesión con Google para cargar tus apuestas privadas.'); setCloudStatus('Sesión cerrada');
+    return;
+  }
+  if (cloudUser?.id === user.id && cloudLoaded) return;
+  cloudUser = user; cloudLoaded = false;
+  setCloudStatus('Cargando apuestas…'); showCloudGate('Cargando tus apuestas guardadas…');
+  const { data, error } = await cloud.from('bets').select('id,payload').order('created_at', { ascending: true });
+  if (error) {
+    const cached = localStorage.getItem(`${STORAGE_KEY}:${user.id}`);
+    if (!cached) { showCloudGate(`No se pudieron cargar tus datos: ${error.message}`, true); setCloudStatus('Error de sincronización', true); return; }
+    try { bets = JSON.parse(cached); } catch { bets = []; }
+    cloudLoaded = true; updateDashboard(); hideCloudGate(); setCloudStatus('Sin conexión · mostrando copia local', true); return;
+  }
+  if (data?.length) bets = data.map(row => row.payload).filter(Boolean);
+  else if (legacyLocalBets.length && window.confirm(`Esta cuenta todavía no tiene apuestas. ¿Quieres importar las ${legacyLocalBets.length} apuestas guardadas en este navegador?`)) bets = legacyLocalBets;
+  else bets = [];
+  bets = bets.filter(bet => bet.id !== LEGACY_SAMPLE_ID);
+  bets.forEach(bet => { if (!bet.capturePath) bet.captureId = null; });
+  profile = { ...profile, displayName: user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split('@')[0] || 'Mi cuenta', email: user.email || '', initials: '' };
+  localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
+  cloudLoaded = true; localStorage.setItem(`${STORAGE_KEY}:${user.id}`, JSON.stringify(bets));
+  renderProfile(); updateDashboard(); hideCloudGate(); setCloudStatus('Sincronizando…');
+  try { await syncBetsToCloud(); } catch (syncError) { setCloudStatus(`Error al sincronizar: ${syncError.message}`, true); }
+}
+async function initializeCloud() {
+  if (!supabaseConfigReady) { setCloudStatus('Solo en este dispositivo'); return; }
+  document.body.classList.add('cloud-configured'); showCloudGate('Conectando con tu cuenta…'); setCloudStatus('Conectando…');
+  if (!window.supabase?.createClient) { showCloudGate('No se pudo cargar el servicio de cuenta. Comprueba tu conexión e inténtalo de nuevo.', true); setCloudStatus('Servicio no disponible', true); return; }
+  cloud = window.supabase.createClient(window.BET4FUN_SUPABASE_URL, window.BET4FUN_SUPABASE_ANON_KEY);
+  const { data, error } = await cloud.auth.getSession();
+  if (error) { showCloudGate(`No se pudo comprobar la sesión: ${error.message}`, true); setCloudStatus('Error de conexión', true); return; }
+  await acceptCloudSession(data.session);
+  cloud.auth.onAuthStateChange((_event, session) => { queueMicrotask(() => acceptCloudSession(session)); });
+}
 function openProfile() {
   const form = $('#profile-form');
   form.elements.displayName.value = profile.displayName || '';
@@ -105,7 +180,7 @@ function workflowMarkup(bet) {
 }
 function rowMarkup(bet) {
   const isDue = needsReview(bet);
-  const capture = bet.captureId ? `<button class="capture-link" data-open-capture="${escapeHtml(bet.captureId)}">Ver captura adjunta</button>` : '';
+  const capture = bet.capturePath ? `<button class="capture-link" data-open-cloud-capture="${escapeHtml(bet.capturePath)}">Ver captura adjunta</button>` : bet.captureId ? `<button class="capture-link" data-open-capture="${escapeHtml(bet.captureId)}">Ver captura adjunta (solo este dispositivo)</button>` : '';
   const noteButton = `<button class="bet-note-button" data-edit-note="${escapeHtml(bet.id)}">${bet.note ? 'Editar nota' : '＋ Añadir nota'}${bet.note ? '<span class="note-saved-mark" aria-label="Tiene una nota">●</span>' : ''}</button>`;
   return `<tr class="bet-row ${isDue ? 'due-row' : ''}"><td><div class="bet-title">${escapeHtml(bet.event)}</div><div class="bet-sub">${escapeHtml(bet.player)} · <span class="sport-label"><span aria-hidden="true">${sportEmoji(bet.sport)}</span> ${escapeHtml(bet.sport)}</span> · ${shortDate(bet.eventAt)}</div><div class="bet-row-tools">${capture}${noteButton}</div></td><td><span class="type-chip">${escapeHtml(bet.type)}</span></td><td><div class="legs-cell">${legsMarkup(bet)}</div>${reviewActions(bet)}</td><td class="amount">${money(totalStake(bet))}</td><td class="profit-positive">${openBet(bet) ? '+' + money(potential(bet)) : money(bet.actualProfit)}</td><td>${statusMarkup(bet)}</td><td>${workflowMarkup(bet)}</td></tr>`;
 }
@@ -121,6 +196,7 @@ function bindBetActions() {
     bet.promoStatus = bet.promoStatus === 'received' ? 'pending' : 'received'; save();
   }));
   $$('[data-open-capture]').forEach(button => button.addEventListener('click', () => openLinkedCapture(button.dataset.openCapture)));
+  $$('[data-open-cloud-capture]').forEach(button => button.addEventListener('click', () => openCloudCapture(button.dataset.openCloudCapture)));
   $$('[data-edit-note]').forEach(button => button.addEventListener('click', () => editBetNote(button.dataset.editNote)));
 }
 function editBetNote(id) {
@@ -260,7 +336,12 @@ function updateDashboard() {
   $('#bet-count').textContent = bets.length;
   renderRows(); renderDays(); renderNextEvent(); renderData(); bindBetActions();
 }
-function save() { localStorage.setItem(STORAGE_KEY, JSON.stringify(bets)); updateDashboard(); }
+function save() {
+  const cacheKey = cloudUser ? `${STORAGE_KEY}:${cloudUser.id}` : STORAGE_KEY;
+  localStorage.setItem(cacheKey, JSON.stringify(bets)); updateDashboard();
+  if (cloud && cloudUser && cloudLoaded) cloudQueue = cloudQueue.catch(() => {}).then(() => syncBetsToCloud()).catch(error => { setCloudStatus(`Error al sincronizar: ${error.message}`, true); throw error; });
+  return cloudQueue;
+}
 function settleBet(id, result) {
   const bet = bets.find(b => b.id === id); if (!bet) return;
   let actualProfit = 0;
@@ -281,6 +362,10 @@ function openModal(prefill = {}) {
   if (!hint) { hint = document.createElement('div'); hint.id = 'capture-link-hint'; hint.className = 'form-hint capture-linked-hint'; form.prepend(hint); }
   hint.hidden = !pendingCaptureId;
   hint.textContent = pendingCaptureId ? `La captura «${pendingCaptureName}» quedará adjunta. Revisa los datos reconocidos antes de guardar.` : '';
+  const cloudCaptureChoice = form.querySelector('.cloud-upload-choice');
+  cloudCaptureChoice.hidden = !pendingCaptureId;
+  form.elements.uploadCaptureCloud.disabled = !(pendingCaptureId && cloudUser);
+  cloudCaptureChoice.querySelector('small').textContent = pendingCaptureId && !cloudUser ? 'Conecta tu cuenta para guardar la imagen y abrirla desde otros dispositivos.' : 'Opcional · privada y accesible desde tus otros dispositivos. La lectura OCR se hace en este dispositivo.';
   let ocrSummary = $('#capture-ocr-summary');
   if (!ocrSummary) { ocrSummary = document.createElement('details'); ocrSummary.id = 'capture-ocr-summary'; ocrSummary.className = 'capture-ocr-summary'; hint.after(ocrSummary); }
   ocrSummary.hidden = !pendingCaptureOcrText;
@@ -310,18 +395,39 @@ $('#profile-form').addEventListener('submit', event => {
   localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
   renderProfile(); closeProfile();
 });
+$('#cloud-login').addEventListener('click', loginWithGoogle);
+$('#cloud-account').addEventListener('click', async () => {
+  if (!cloudUser) { await loginWithGoogle(); return; }
+  const { error } = await cloud.auth.signOut();
+  if (error) setCloudStatus(`No se pudo cerrar sesión: ${error.message}`, true);
+});
 $$('.nav-item').forEach(link => link.addEventListener('click', e => { e.preventDefault(); showPage(link.dataset.page); }));
 $$('[data-page-link]').forEach(link => link.addEventListener('click', () => showPage(link.dataset.pageLink)));
 $$('[data-open-form]').forEach(button => button.addEventListener('click', openModal));
 $('#close-modal').addEventListener('click', closeModal); $('#cancel-modal').addEventListener('click', closeModal);
 $('#modal').addEventListener('click', e => { if (e.target === $('#modal')) closeModal(); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeModal(); closeProfile(); } });
-$('#bet-form').addEventListener('submit', e => {
+$('#bet-form').addEventListener('submit', async e => {
   e.preventDefault(); const data = new FormData(e.currentTarget);
   const eventAt = new Date(data.get('eventAt'));
   const reviewAfter = new Date(eventAt.getTime() + 3 * 60 * 60 * 1000);
-  bets.push({ id: crypto.randomUUID(), date: data.get('date'), eventAt: eventAt.toISOString(), reviewAfter: reviewAfter.toISOString(), event: data.get('event').trim(), player: data.get('player').trim(), sport: data.get('sport').trim(), type: 'Surebet', result: 'pending', placed: true, promoEligible: false, promoStatus: 'none', captureId: pendingCaptureId, legs: [1, 2].map(i => ({ bookmaker: data.get(`bookmaker${i}`).trim(), region: 'ES', selection: data.get(`selection${i}`).trim(), odds: Number(data.get(`odds${i}`)), stake: Number(data.get(`stake${i}`)), profit: Number(data.get(`profit${i}`)), humanError: data.get(`error${i}`) === 'on', errorImpact: Number(data.get(`errorImpact${i}`) || 0) })) });
-  save(); e.currentTarget.reset(); closeModal(); const toast = $('#toast'); toast.textContent = 'Surebet guardada'; toast.classList.add('show'); setTimeout(() => toast.classList.remove('show'), 2400);
+  const localCaptureId = pendingCaptureId;
+  const uploadCapture = data.get('uploadCaptureCloud') === 'on' && Boolean(localCaptureId && cloudUser);
+  const bet = { id: crypto.randomUUID(), date: data.get('date'), eventDate: String(data.get('eventAt')).slice(0, 10), eventAt: eventAt.toISOString(), reviewAfter: reviewAfter.toISOString(), event: data.get('event').trim(), player: data.get('player').trim(), sport: data.get('sport').trim(), type: 'Surebet', result: 'pending', placed: true, promoEligible: false, promoStatus: 'none', captureId: cloudUser ? null : localCaptureId, capturePath: null, legs: [1, 2].map(i => ({ bookmaker: data.get(`bookmaker${i}`).trim(), region: 'ES', selection: data.get(`selection${i}`).trim(), odds: Number(data.get(`odds${i}`)), stake: Number(data.get(`stake${i}`)), profit: Number(data.get(`profit${i}`)), humanError: data.get(`error${i}`) === 'on', errorImpact: Number(data.get(`errorImpact${i}`) || 0) })) };
+  bets.push(bet);
+  try { await save(); }
+  catch (error) {
+    bets = bets.filter(item => item.id !== bet.id);
+    localStorage.setItem(cloudUser ? `${STORAGE_KEY}:${cloudUser.id}` : STORAGE_KEY, JSON.stringify(bets)); updateDashboard();
+    const toast = $('#toast'); toast.textContent = `No se pudo guardar: ${error.message}`; toast.classList.add('show'); return;
+  }
+  e.currentTarget.reset(); closeModal();
+  const toast = $('#toast'); toast.textContent = cloudUser ? 'Apuesta sincronizada con tu cuenta' : 'Apuesta guardada en este dispositivo'; toast.classList.add('show'); setTimeout(() => toast.classList.remove('show'), 2800);
+  if (uploadCapture) {
+    try { await uploadCaptureForBet(localCaptureId, bet); toast.textContent = 'Captura guardada en tu cuenta privada'; }
+    catch (uploadError) { toast.textContent = `Apuesta guardada; captura no subida: ${uploadError.message}`; }
+    toast.classList.add('show');
+  }
 });
 $('#filter-type').addEventListener('change', renderRows);
 $('#notes-month').addEventListener('change', renderNoteAnalysis);
@@ -491,15 +597,31 @@ async function renderCaptures() {
   const grid = $('#capture-grid'); if (!grid) return;
   try {
     const files = await captureRequest('readonly', store => store.getAll());
+    let remoteCaptures = [];
+    if (cloud && cloudUser) {
+      const { data, error } = await cloud.from('captures').select('id,bet_id,object_path,file_name,mime_type,size_bytes,created_at').order('created_at', { ascending: false });
+      if (error) throw error;
+      remoteCaptures = await Promise.all((data || []).map(async capture => {
+        const { data: signed, error: signError } = await cloud.storage.from('bet-captures').createSignedUrl(capture.object_path, 3600);
+        return { ...capture, signedUrl: signError ? '' : signed?.signedUrl || '' };
+      }));
+    }
     captureObjectUrls.forEach(url => URL.revokeObjectURL(url)); captureObjectUrls = [];
-    $('#capture-count').textContent = `${files.length} ${files.length === 1 ? 'archivo' : 'archivos'}`;
-    $('#capture-empty').classList.toggle('visible', !files.length);
-    grid.innerHTML = files.sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map(file => {
+    const totalFiles = files.length + remoteCaptures.length;
+    $('#capture-count').textContent = `${totalFiles} ${totalFiles === 1 ? 'archivo' : 'archivos'}`;
+    $('#capture-empty').classList.toggle('visible', !totalFiles);
+    const localCards = files.sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map(file => {
       const url = URL.createObjectURL(file.blob); captureObjectUrls.push(url);
-      const linkedBet = bets.find(bet => bet.captureId === file.id);
-      const action = linkedBet ? `<button class="capture-use linked" data-open-bet-capture="${escapeHtml(file.id)}">Adjunta a ${escapeHtml(linkedBet.event)}</button>` : `<button class="capture-use" data-incorporate-capture="${escapeHtml(file.id)}">Incorporar como apuesta</button>`;
+      const linkedBet = bets.find(bet => bet.captureId === file.id || bet.captureFileId === file.id);
+      const action = linkedBet ? `<button class="capture-use linked" ${linkedBet.capturePath ? `data-open-cloud-file="${escapeHtml(linkedBet.capturePath)}"` : `data-open-bet-capture="${escapeHtml(file.id)}"`}>${linkedBet.capturePath ? 'Guardada en la nube · ' : 'Adjunta a '}${escapeHtml(linkedBet.event)}</button>` : `<button class="capture-use" data-incorporate-capture="${escapeHtml(file.id)}">Incorporar como apuesta</button>`;
       return `<article class="capture-card" data-capture-card="${escapeHtml(file.id)}"><img src="${url}" alt="Captura de ${escapeHtml(file.name)}"><div class="capture-info"><b title="${escapeHtml(file.name)}">${escapeHtml(file.name)}</b><small>${shortDate(file.createdAt)}</small>${action}<button data-delete-capture="${escapeHtml(file.id)}" aria-label="Eliminar ${escapeHtml(file.name)}">Eliminar</button></div></article>`;
     }).join('');
+    const cloudCards = remoteCaptures.map(file => {
+      const linkedBet = bets.find(bet => bet.id === file.bet_id);
+      const fileMeta = `${Math.max(1, Math.round(Number(file.size_bytes || 0) / 1024))} KB · En tu nube privada`;
+      return `<article class="capture-card cloud-capture-card" data-cloud-capture-card="${escapeHtml(file.id)}">${file.signedUrl ? `<img src="${escapeHtml(file.signedUrl)}" alt="Captura de ${escapeHtml(file.file_name)}">` : '<div class="cloud-capture-placeholder">Imagen privada</div>'}<div class="capture-info"><b title="${escapeHtml(file.file_name)}">${escapeHtml(file.file_name)}</b><small>${fileMeta}</small>${linkedBet ? `<span class="capture-use linked">Adjunta a ${escapeHtml(linkedBet.event)}</span>` : ''}<button data-open-cloud-file="${escapeHtml(file.object_path)}">Abrir captura</button><button data-delete-cloud-capture="${escapeHtml(file.id)}" data-path="${escapeHtml(file.object_path)}" aria-label="Eliminar ${escapeHtml(file.file_name)}">Eliminar de la nube</button></div></article>`;
+    }).join('');
+    grid.innerHTML = localCards + cloudCards;
     $$('[data-incorporate-capture]').forEach(button => button.addEventListener('click', async () => {
       const file = await captureRequest('readonly', store => store.get(button.dataset.incorporateCapture));
       if (!file) return;
@@ -518,10 +640,21 @@ async function renderCaptures() {
       }
     }));
     $$('[data-open-bet-capture]').forEach(button => button.addEventListener('click', () => openLinkedCapture(button.dataset.openBetCapture)));
+    $$('[data-open-cloud-file]').forEach(button => button.addEventListener('click', () => openCloudCapture(button.dataset.openCloudFile)));
     $$('[data-delete-capture]').forEach(button => button.addEventListener('click', async () => {
       const id = button.dataset.deleteCapture;
       bets.filter(bet => bet.captureId === id).forEach(bet => { bet.captureId = null; });
       save(); await captureRequest('readwrite', store => store.delete(id)); renderCaptures();
+    }));
+    $$('[data-delete-cloud-capture]').forEach(button => button.addEventListener('click', async () => {
+      const id = button.dataset.deleteCloudCapture, path = button.dataset.path;
+      if (!window.confirm('¿Eliminar esta captura de tu almacenamiento en la nube?')) return;
+      const { error: storageError } = await cloud.storage.from('bet-captures').remove([path]);
+      if (storageError) { showCaptureToast(`No se pudo borrar: ${storageError.message}`); return; }
+      const { error } = await cloud.from('captures').delete().eq('id', id);
+      if (error) { showCaptureToast(`No se pudo borrar el registro: ${error.message}`); return; }
+      bets.filter(bet => bet.captureFileId === id).forEach(bet => { bet.capturePath = null; bet.captureFileId = null; });
+      await save(); renderCaptures();
     }));
   } catch (error) {
     $('#capture-empty').textContent = 'No se pudieron cargar las capturas en este navegador.';
@@ -532,6 +665,25 @@ async function openLinkedCapture(id) {
   await showPage('capturas');
   const card = document.querySelector(`[data-capture-card="${CSS.escape(id)}"]`);
   if (card) { card.scrollIntoView({ behavior: 'smooth', block: 'center' }); card.classList.add('capture-highlight'); setTimeout(() => card.classList.remove('capture-highlight'), 1800); }
+}
+async function openCloudCapture(path) {
+  if (!cloud || !cloudUser) return;
+  const { data, error } = await cloud.storage.from('bet-captures').createSignedUrl(path, 3600);
+  if (error) { showCaptureToast(`No se pudo abrir la captura: ${error.message}`); return; }
+  window.open(data.signedUrl, '_blank', 'noopener,noreferrer');
+}
+async function uploadCaptureForBet(localId, bet) {
+  if (!cloudUser || !cloud) throw new Error('Inicia sesión antes de subir capturas.');
+  const file = await captureRequest('readonly', store => store.get(localId));
+  if (!file) throw new Error('No se encontró la captura en este dispositivo.');
+  const extension = file.type === 'image/png' ? 'png' : file.type === 'image/webp' ? 'webp' : 'jpg';
+  const path = `${cloudUser.id}/${bet.id}/${file.id}.${extension}`;
+  const { error: uploadError } = await cloud.storage.from('bet-captures').upload(path, file.blob, { contentType: file.type, upsert: false });
+  if (uploadError) throw uploadError;
+  const { error: recordError } = await cloud.from('captures').insert({ id: file.id, user_id: cloudUser.id, bet_id: bet.id, object_path: path, file_name: file.name, mime_type: file.type, size_bytes: file.blob.size });
+  if (recordError) { await cloud.storage.from('bet-captures').remove([path]); throw recordError; }
+  bet.capturePath = path; bet.captureFileId = file.id; bet.captureId = null;
+  await save(); await captureRequest('readwrite', store => store.delete(localId)); renderCaptures();
 }
 async function addCaptureFiles(fileList) {
   const files = [...fileList].filter(file => ['image/png', 'image/jpeg', 'image/webp'].includes(file.type));
@@ -546,4 +698,5 @@ uploadZone.addEventListener('keydown', event => { if (event.key === 'Enter' || e
 uploadZone.addEventListener('dragover', event => { event.preventDefault(); uploadZone.classList.add('drag-active'); });
 uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag-active'));
 uploadZone.addEventListener('drop', event => { event.preventDefault(); uploadZone.classList.remove('drag-active'); addCaptureFiles(event.dataTransfer.files); });
+
 

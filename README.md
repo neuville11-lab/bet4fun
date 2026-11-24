@@ -8,10 +8,10 @@ El proyecto se puede publicar gratis con GitHub Pages desde un repositorio públ
 
 ## Datos y privacidad
 
-- Las apuestas se guardan en `localStorage` del navegador.
-- Las capturas se guardan en IndexedDB del navegador.
-- Los datos no se suben al repositorio ni se sincronizan entre dispositivos.
-- El repositorio y el código publicado son públicos; no incluir datos personales o importes reales en los archivos fuente.
+- La web funciona localmente si `supabase-config.js` está vacío.
+- Para sincronizar entre dispositivos, sigue `SUPABASE_SETUP.md`: apuestas privadas por cuenta con Supabase Auth + PostgreSQL RLS.
+- Las capturas se guardan localmente por defecto. El usuario puede subir una captura vinculada a una apuesta a un bucket privado.
+- No guardar datos personales o apuestas reales en los archivos fuente. No poner claves `service_role` en el repositorio.
 
 ## Funciones
 
@@ -20,4 +20,6 @@ El proyecto se puede publicar gratis con GitHub Pages desde un repositorio públ
 - Estado de apuesta realizada y seguimiento de bonos/freebets.
 - Datos por casa y deporte, con control de errores humanos e impacto en euros.
 - Apartado para cargar y consultar capturas guardadas en el dispositivo actual.
+- Sincronización opcional de apuestas entre dispositivos y almacenamiento privado opcional de capturas.
+
 
