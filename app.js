@@ -438,27 +438,45 @@ $('#close-modal').addEventListener('click', closeModal); $('#cancel-modal').addE
 $('#modal').addEventListener('click', e => { if (e.target === $('#modal')) closeModal(); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeModal(); closeProfile(); } });
 $('#bet-form').addEventListener('submit', async e => {
-  e.preventDefault(); const data = new FormData(e.currentTarget);
-  const eventAt = new Date(data.get('eventAt'));
-  const reviewAfter = new Date(eventAt.getTime() + 3 * 60 * 60 * 1000);
-  const localCaptureId = pendingCaptureId;
-  const uploadCapture = data.get('uploadCaptureCloud') === 'on' && Boolean(localCaptureId && cloudUser);
-  const bet = { id: crypto.randomUUID(), date: data.get('date'), eventDate: String(data.get('eventAt')).slice(0, 10), eventAt: eventAt.toISOString(), reviewAfter: reviewAfter.toISOString(), event: data.get('event').trim(), player: data.get('player').trim(), sport: data.get('sport').trim(), type: 'Surebet', result: 'pending', placed: true, promoEligible: false, promoStatus: 'none', captureId: cloudUser ? null : localCaptureId, capturePath: null, legs: [1, 2].map(i => ({ bookmaker: data.get(`bookmaker${i}`).trim(), region: 'ES', selection: data.get(`selection${i}`).trim(), odds: Number(data.get(`odds${i}`)), stake: Number(data.get(`stake${i}`)), profit: Number(data.get(`profit${i}`)), humanError: data.get(`error${i}`) === 'on', errorImpact: Number(data.get(`errorImpact${i}`) || 0) })) };
-  bets.push(bet);
-  try { await save(); }
-  catch (error) {
-    bets = bets.filter(item => item.id !== bet.id);
-    localStorage.setItem(cloudUser ? `${STORAGE_KEY}:${cloudUser.id}` : STORAGE_KEY, JSON.stringify(bets)); updateDashboard();
-    const toast = $('#toast'); toast.textContent = `No se pudo guardar: ${error.message}`; toast.classList.add('show'); return;
-  }
-  e.currentTarget.reset(); closeModal();
-  const toast = $('#toast'); toast.textContent = cloudUser ? 'Apuesta sincronizada con tu cuenta' : 'Apuesta guardada en este dispositivo'; toast.classList.add('show'); setTimeout(() => toast.classList.remove('show'), 2800);
-  if (uploadCapture) {
-    try { await uploadCaptureForBet(localCaptureId, bet); toast.textContent = 'Captura guardada en tu cuenta privada'; }
-    catch (uploadError) { toast.textContent = `Apuesta guardada; captura no subida: ${uploadError.message}`; }
-    toast.classList.add('show');
+  e.preventDefault();
+  const form = e.currentTarget;
+  if (form.dataset.saving === 'true') return;
+  form.dataset.saving = 'true';
+  const submitButton = form.querySelector('[type="submit"]');
+  submitButton.disabled = true;
+  submitButton.textContent = 'Guardando…';
+  const toast = $('#toast');
+  toast.textContent = 'Guardando apuesta…'; toast.classList.add('show');
+  let bet, added = false, localCaptureId = null, uploadCapture = false;
+  try {
+    const data = new FormData(form);
+    const eventAt = new Date(data.get('eventAt'));
+    const reviewAfter = new Date(eventAt.getTime() + 3 * 60 * 60 * 1000);
+    localCaptureId = pendingCaptureId;
+    uploadCapture = data.get('uploadCaptureCloud') === 'on' && Boolean(localCaptureId && cloudUser);
+    bet = { id: crypto.randomUUID(), date: data.get('date'), eventDate: String(data.get('eventAt')).slice(0, 10), eventAt: eventAt.toISOString(), reviewAfter: reviewAfter.toISOString(), event: data.get('event').trim(), player: data.get('player').trim(), sport: data.get('sport').trim(), type: 'Surebet', result: 'pending', placed: true, promoEligible: false, promoStatus: 'none', captureId: cloudUser ? null : localCaptureId, capturePath: null, legs: [1, 2].map(i => ({ bookmaker: data.get(`bookmaker${i}`).trim(), region: 'ES', selection: data.get(`selection${i}`).trim(), odds: Number(data.get(`odds${i}`)), stake: Number(data.get(`stake${i}`)), profit: Number(data.get(`profit${i}`)), humanError: data.get(`error${i}`) === 'on', errorImpact: Number(data.get(`errorImpact${i}`) || 0) })) };
+    bets.push(bet); added = true;
+    await save();
+    form.reset(); closeModal();
+    toast.textContent = cloudUser ? 'Apuesta sincronizada con tu cuenta' : 'Apuesta guardada en este dispositivo'; toast.classList.add('show'); setTimeout(() => toast.classList.remove('show'), 2800);
+    if (uploadCapture) {
+      try { await uploadCaptureForBet(localCaptureId, bet); toast.textContent = 'Captura guardada en tu cuenta privada'; }
+      catch (uploadError) { toast.textContent = `Apuesta guardada; captura no subida: ${uploadError.message}`; }
+      toast.classList.add('show');
+    }
+  } catch (error) {
+    if (added) {
+      bets = bets.filter(item => item.id !== bet.id);
+      localStorage.setItem(cloudUser ? `${STORAGE_KEY}:${cloudUser.id}` : STORAGE_KEY, JSON.stringify(bets)); updateDashboard();
+    }
+    toast.textContent = `No se pudo guardar: ${error.message}`; toast.classList.add('show');
+  } finally {
+    delete form.dataset.saving;
+    submitButton.disabled = false;
+    submitButton.textContent = 'Guardar apuesta';
   }
 });
+
 $('#filter-type').addEventListener('change', renderRows);
 $('#notes-month').addEventListener('change', renderNoteAnalysis);
 showPage(location.hash.slice(1) && $(`#page-${location.hash.slice(1)}`) ? location.hash.slice(1) : 'dashboard');
