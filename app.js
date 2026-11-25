@@ -28,7 +28,9 @@ const todayKey = () => {
 const monthKeyNow = () => todayKey().slice(0, 7);
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const openBet = bet => bet.result === 'pending';
-const needsReview = bet => openBet(bet) && Date.now() >= new Date(bet.reviewAfter).getTime();
+const estimatedEventEnd = bet => { const reviewAt = Date.parse(bet.reviewAfter || ''); if (Number.isFinite(reviewAt)) return reviewAt; const startAt = Date.parse(bet.eventAt || ''); return Number.isFinite(startAt) ? startAt + 3 * 60 * 60 * 1000 : NaN; };
+const eventFinished = bet => Date.now() >= estimatedEventEnd(bet);
+const needsReview = bet => openBet(bet) && eventFinished(bet);
 const totalStake = bet => bet.legs.reduce((sum, leg) => sum + Number(leg.stake || 0), 0);
 const potential = bet => Math.min(...bet.legs.map(leg => Number(leg.profit || 0)));
 const legsMarkup = bet => bet.legs.map(leg => {
@@ -228,18 +230,19 @@ function statusMarkup(bet) {
   return `<span class="status-chip pending">Evento · ${shortDate(bet.eventAt)}</span>`;
 }
 function reviewActions(bet) {
-  return `<div class="review-actions"><button data-analyze="${escapeHtml(bet.id)}">${'Buscar resultado'}</button></div>`;
+  const available = eventFinished(bet);
+  const label = available ? 'Buscar resultado' : 'Disponible al finalizar';
+  const help = available ? '' : '<small class="analysis-locked-hint">Se habilitará tras la hora estimada de finalización.</small>';
+  return `<div class="review-actions"><button data-analyze="${escapeHtml(bet.id)}" ${available ? '' : 'disabled'}>${label}</button>${help}</div>`;
 }
-function workflowMarkup(bet) {
-  const id = escapeHtml(bet.id), freebet = Boolean(bet.promoEligible), received = freebet && bet.promoStatus === 'received';
-  return `<div class="workflow-cell"><div class="promo-square-wrap"><button type="button" class="promo-square fb-square ${freebet ? 'selected' : ''}" role="checkbox" aria-checked="${freebet}" aria-label="${freebet ? 'Freebet marcada' : 'Marcar freebet'}" title="Marcar si esta apuesta genera una freebet" data-toggle-fb="${id}">FB</button><button type="button" class="promo-square tick-square ${received ? 'selected' : ''}" role="checkbox" aria-checked="${received}" aria-label="${received ? 'Freebet cobrada' : 'Marcar freebet como cobrada'}" title="Marcar cuando se haya cobrado la freebet" data-toggle-fb-received="${id}" ${freebet ? '' : 'disabled'}>✓</button></div></div>`;
-}
+function workflowMarkup(_bet) { return ''; }
+
 function rowMarkup(bet) {
   const isDue = needsReview(bet);
   const capture = bet.capturePath ? `<button class="capture-link" data-open-cloud-capture="${escapeHtml(bet.capturePath)}">Ver captura adjunta</button>` : bet.captureId ? `<button class="capture-link" data-open-capture="${escapeHtml(bet.captureId)}">Ver captura adjunta (solo este dispositivo)</button>` : '';
   const noteButton = `<button class="bet-note-button" data-edit-note="${escapeHtml(bet.id)}">${bet.note ? 'Editar nota' : '＋ Añadir nota'}${bet.note ? '<span class="note-saved-mark" aria-label="Tiene una nota">●</span>' : ''}</button>`;
   const deleteButton = `<button type="button" class="bet-delete-button" data-delete-bet="${escapeHtml(bet.id)}" aria-label="Eliminar apuesta ${escapeHtml(bet.event)}">Eliminar</button>`;
-  return `<tr class="bet-row ${isDue ? 'due-row' : ''}"><td><div class="bet-title">${escapeHtml(bet.event)}</div><div class="bet-sub">${escapeHtml(bet.player)} · <span class="sport-label"><span aria-hidden="true">${sportEmoji(bet.sport)}</span> ${escapeHtml(bet.sport)}</span> · ${shortDate(bet.eventAt)}</div><div class="bet-row-tools">${capture}${noteButton}${deleteButton}</div></td><td><span class="type-chip">${escapeHtml(bet.type)}</span></td><td><div class="legs-cell">${legsMarkup(bet)}</div>${reviewActions(bet)}</td><td class="amount">${money(totalStake(bet))}</td><td class="profit-positive">${openBet(bet) ? '+' + money(potential(bet)) : money(bet.actualProfit)}</td><td>${statusMarkup(bet)}</td><td>${workflowMarkup(bet)}</td></tr>`;
+  return `<tr class="bet-row ${isDue ? 'due-row' : ''}"><td><div class="bet-title">${escapeHtml(bet.event)}</div><div class="bet-sub">${escapeHtml(bet.player)} · <span class="sport-label"><span aria-hidden="true">${sportEmoji(bet.sport)}</span> ${escapeHtml(bet.sport)}</span> · ${shortDate(bet.eventAt)}</div><div class="bet-row-tools">${capture}${noteButton}${deleteButton}</div></td><td><span class="type-chip">${escapeHtml(bet.type)}</span></td><td><div class="legs-cell">${legsMarkup(bet)}</div>${reviewActions(bet)}</td><td class="amount">${money(totalStake(bet))}</td><td class="profit-positive">${openBet(bet) ? '+' + money(potential(bet)) : money(bet.actualProfit)}</td><td>${statusMarkup(bet)}</td></tr>`;
 }
 function bindBetActions() {
   $$('[data-review]').forEach(button => button.addEventListener('click', () => settleBet(button.dataset.id, button.dataset.review)));
@@ -306,7 +309,7 @@ function editBetNote(id) {
   backdrop.querySelector('textarea').focus();
 }
 async function analyzeBet(id) {
-  const bet = bets.find(item => item.id === id); if (!bet) return;
+  const bet = bets.find(item => item.id === id); if (!bet || !eventFinished(bet)) return;
   const backdrop = document.createElement('div'); backdrop.className = 'analysis-backdrop';
   backdrop.innerHTML = `<section class="analysis-modal" role="dialog" aria-modal="true" aria-labelledby="analysis-title"><div class="modal-head"><div><div class="eyebrow">ANÁLISIS AUTOMÁTICO</div><h2 id="analysis-title">${escapeHtml(bet.event)}</h2></div><button type="button" class="close-button" data-close-analysis aria-label="Cerrar">×</button></div><p class="analysis-help">BET4FUN consultará los datos del partido y comparará cada selección automáticamente. Revisa siempre la liquidación en la casa de apuestas, porque sus reglas y correcciones pueden variar.</p><div class="auto-analysis-status" role="status">Preparando consulta…</div><div class="auto-analysis-results"></div><div class="form-actions"><button type="button" class="secondary-button" data-close-analysis>Cerrar</button><button type="button" class="primary-button" data-run-auto-check>Buscar resultado</button></div></section>`;
   document.body.append(backdrop);
