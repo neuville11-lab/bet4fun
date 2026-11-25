@@ -212,7 +212,8 @@ function rowMarkup(bet) {
   const isDue = needsReview(bet);
   const capture = bet.capturePath ? `<button class="capture-link" data-open-cloud-capture="${escapeHtml(bet.capturePath)}">Ver captura adjunta</button>` : bet.captureId ? `<button class="capture-link" data-open-capture="${escapeHtml(bet.captureId)}">Ver captura adjunta (solo este dispositivo)</button>` : '';
   const noteButton = `<button class="bet-note-button" data-edit-note="${escapeHtml(bet.id)}">${bet.note ? 'Editar nota' : '＋ Añadir nota'}${bet.note ? '<span class="note-saved-mark" aria-label="Tiene una nota">●</span>' : ''}</button>`;
-  return `<tr class="bet-row ${isDue ? 'due-row' : ''}"><td><div class="bet-title">${escapeHtml(bet.event)}</div><div class="bet-sub">${escapeHtml(bet.player)} · <span class="sport-label"><span aria-hidden="true">${sportEmoji(bet.sport)}</span> ${escapeHtml(bet.sport)}</span> · ${shortDate(bet.eventAt)}</div><div class="bet-row-tools">${capture}${noteButton}</div></td><td><span class="type-chip">${escapeHtml(bet.type)}</span></td><td><div class="legs-cell">${legsMarkup(bet)}</div>${reviewActions(bet)}</td><td class="amount">${money(totalStake(bet))}</td><td class="profit-positive">${openBet(bet) ? '+' + money(potential(bet)) : money(bet.actualProfit)}</td><td>${statusMarkup(bet)}</td><td>${workflowMarkup(bet)}</td></tr>`;
+  const deleteButton = `<button type="button" class="bet-delete-button" data-delete-bet="${escapeHtml(bet.id)}" aria-label="Eliminar apuesta ${escapeHtml(bet.event)}">Eliminar</button>`;
+  return `<tr class="bet-row ${isDue ? 'due-row' : ''}"><td><div class="bet-title">${escapeHtml(bet.event)}</div><div class="bet-sub">${escapeHtml(bet.player)} · <span class="sport-label"><span aria-hidden="true">${sportEmoji(bet.sport)}</span> ${escapeHtml(bet.sport)}</span> · ${shortDate(bet.eventAt)}</div><div class="bet-row-tools">${capture}${noteButton}${deleteButton}</div></td><td><span class="type-chip">${escapeHtml(bet.type)}</span></td><td><div class="legs-cell">${legsMarkup(bet)}</div>${reviewActions(bet)}</td><td class="amount">${money(totalStake(bet))}</td><td class="profit-positive">${openBet(bet) ? '+' + money(potential(bet)) : money(bet.actualProfit)}</td><td>${statusMarkup(bet)}</td><td>${workflowMarkup(bet)}</td></tr>`;
 }
 function bindBetActions() {
   $$('[data-review]').forEach(button => button.addEventListener('click', () => settleBet(button.dataset.id, button.dataset.review)));
@@ -228,7 +229,39 @@ function bindBetActions() {
   $$('[data-open-capture]').forEach(button => button.addEventListener('click', () => openLinkedCapture(button.dataset.openCapture)));
   $$('[data-open-cloud-capture]').forEach(button => button.addEventListener('click', () => openCloudCapture(button.dataset.openCloudCapture)));
   $$('[data-edit-note]').forEach(button => button.addEventListener('click', () => editBetNote(button.dataset.editNote)));
+  $$('[data-delete-bet]').forEach(button => button.addEventListener('click', async () => {
+    const id = button.dataset.deleteBet;
+    const bet = bets.find(item => String(item.id) === id);
+    if (!bet) return;
+    const attachment = bet.capturePath ? ' También se eliminará su captura guardada en la nube.' : '';
+    if (!window.confirm(`¿Eliminar la apuesta «${bet.event}»? Esta acción no se puede deshacer.${attachment}`)) return;
+    button.disabled = true;
+    try {
+      if (cloudUser && !cloudLoaded) throw new Error('Espera a que las apuestas terminen de sincronizarse e inténtalo de nuevo.');
+      let warning = '';
+      if (cloud && cloudUser && cloudLoaded) {
+        cloudQueue = cloudQueue.catch(() => {}).then(async () => {
+          const { error } = await cloud.from('bets').delete().eq('user_id', cloudUser.id).eq('id', id);
+          if (error) throw error;
+          if (bet.capturePath) {
+            const { error: captureError } = await cloud.storage.from('bet-captures').remove([bet.capturePath]);
+            if (captureError) warning = `Apuesta eliminada; no se pudo borrar la captura: ${captureError.message}`;
+          }
+        });
+        await cloudQueue;
+      }
+      bets = bets.filter(item => String(item.id) !== id);
+      localStorage.setItem(cloudUser ? `${STORAGE_KEY}:${cloudUser.id}` : STORAGE_KEY, JSON.stringify(bets));
+      updateDashboard();
+      const toast = $('#toast'); toast.textContent = warning || 'Apuesta eliminada'; toast.classList.add('show'); setTimeout(() => toast.classList.remove('show'), 2800);
+    } catch (error) {
+      button.disabled = false;
+      const toast = $('#toast'); toast.textContent = `No se pudo eliminar: ${error.message}`; toast.classList.add('show');
+    }
+  }));
 }
+
+
 function editBetNote(id) {
   const bet = bets.find(item => item.id === id); if (!bet) return;
   const backdrop = document.createElement('div'); backdrop.className = 'analysis-backdrop';
