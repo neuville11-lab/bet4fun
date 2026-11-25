@@ -40,3 +40,8 @@ Después, publica los cambios del repositorio. Al abrir la web, inicia sesión c
 
 Deja vacíos los dos valores de `supabase-config.js`. La aplicación vuelve a guardar en el navegador; los datos que ya estén en Supabase no se borran.
 
+
+
+## Panel privado de usuarios
+
+Para activar el apartado **Usuarios** en BET4FUN, abre `supabase/admin-directory.sql` en el repositorio, copia el contenido completo y ejecútalo una sola vez en **Supabase → SQL Editor → New query → Run**. La función solo devuelve el directorio de cuentas cuando la sesión autenticada corresponde a `enekogoenaga74@gmail.com`; a los demás usuarios se les deniega también desde la base de datos, aunque intenten llamar a la función directamente. La lista muestra nombre, correo, fecha de alta y último acceso. No compartas claves `service_role` ni las pongas en el código del navegador.
