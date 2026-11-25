@@ -45,3 +45,5 @@ body{background-color:var(--bg);background-image:radial-gradient(#1c29300c .7px,
 
 /* Native fragment navigation fallback if the app bundle is delayed or blocked. */
 body:has(.page:target) .page:not(:target){display:none!important}body:has(.page:target) .page:target{display:block!important}
+
+.review-actions button:disabled,.review-actions button:disabled:hover{background:#efeee9;border-color:#d4d2ca;color:#8a8d87;cursor:not-allowed;transform:none}.analysis-locked-hint{flex-basis:100%;color:#7d827b;font:9px 'DM Mono'}
