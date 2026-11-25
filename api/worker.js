@@ -1,7 +1,11 @@
 const SPORT_CONFIG = {
   football: { base: 'https://v3.football.api-sports.io', endpoint: 'fixtures', finished: new Set(['FT', 'AET', 'PEN']) },
   basketball: { base: 'https://v1.basketball.api-sports.io', endpoint: 'games', finished: new Set(['FT', 'AOT', 'AP']) },
-  hockey: { base: 'https://v1.hockey.api-sports.io', endpoint: 'games', finished: new Set(['FT', 'AOT', 'AP']) }
+  hockey: { base: 'https://v1.hockey.api-sports.io', endpoint: 'games', finished: new Set(['FT', 'AOT', 'AP']) },
+  rugby: { base: 'https://v1.rugby.api-sports.io', endpoint: 'games', finished: new Set(['FT', 'AET']) },
+  baseball: { base: 'https://v1.baseball.api-sports.io', endpoint: 'games', finished: new Set(['FT']) },
+  handball: { base: 'https://v1.handball.api-sports.io', endpoint: 'games', finished: new Set(['FT', 'AET']) },
+  volleyball: { base: 'https://v1.volleyball.api-sports.io', endpoint: 'games', finished: new Set(['FT', 'AET']) }
 };
 
 function response(body, status, origin) {
@@ -56,7 +60,7 @@ function scoreSides(game, sport) {
   const scores = game.scores || game.game?.scores || {};
   const number = value => {
     if (Number.isFinite(Number(value))) return Number(value);
-    for (const key of ['total', 'points', 'goals']) if (Number.isFinite(Number(value?.[key]))) return Number(value[key]);
+    for (const key of ['total', 'points', 'goals', 'runs', 'score']) if (Number.isFinite(Number(value?.[key]))) return Number(value[key]);
     return null;
   };
   return { home: number(scores.home), away: number(scores.away) };
@@ -75,7 +79,7 @@ function scoreForSelection(selection, bet, game, sport) {
   if (homeName && text.includes(homeName)) return scores.home;
   if (awayName && text.includes(awayName)) return scores.away;
   if (/corn|corner/.test(text)) return null;
-  if (/\b(?:total|goals?|goles?|points?|puntos?|goals team|team points)\b/.test(text) || /\b(?:over|under|superior|inferior|mas de|menos de)\b/.test(text)) {
+  if (/\b(?:total|goals?|goles?|points?|puntos?|runs?|carreras?|goals team|team points)\b/.test(text) || /\b(?:over|under|superior|inferior|mas de|menos de)\b/.test(text)) {
     if (scores.home == null || scores.away == null) return null;
     return scores.home + scores.away;
   }
@@ -95,7 +99,7 @@ function parseMarket(selection, sport) {
   if (/corner|corn|esquina/.test(text)) metric = 'corners';
   else if (/rebote|rebound/.test(text)) metric = 'rebounds';
   else if (/asist|assist/.test(text)) metric = 'assists';
-  else if (/punto|points/.test(text)) metric = 'points';
+  else if (/punto|points|carrera|runs/.test(text)) metric = 'points';
   else if (/gol|goal/.test(text)) metric = 'goals';
   else if (/yellow card|tarjeta amarilla/.test(text)) metric = 'yellow cards';
   else if (/shot on goal|tiro a puerta/.test(text)) metric = 'shots on goal';
@@ -245,11 +249,29 @@ async function checkHockey(bet, config, apiKey, date) {
   });
   return resultSummary(bet, legs, game, 'API-Sports Hockey');
 }
+async function checkScoreSport(bet, config, apiKey, date, sport) {
+  const games = await apiGet(config.base, config.endpoint, { date, timezone: 'Europe/Madrid' }, apiKey);
+  const game = games.find(item => gameMatchesEvent(item, eventTeams(bet.event)));
+  if (!game) return null;
+  if (!isFinished(game, config)) return { status: 'not_finished', message: 'API-Sports todavía no marca el encuentro como finalizado.' };
+  const markets = bet.legs.map(leg => parseMarket(leg.selection, sport));
+  const legs = bet.legs.map((leg, index) => {
+    const market = markets[index];
+    const scoreMarket = market && ['', 'goals', 'points'].includes(market.metric);
+    const actual = scoreMarket ? scoreForSelection(leg.selection, bet, game, sport) : null;
+    return { bookmaker: leg.bookmaker, outcome: scoreMarket ? evaluate(actual, market) : 'unknown', actual, market: market?.metric || 'marcador', line: market?.line };
+  });
+  return resultSummary(bet, legs, game, 'API-Sports ' + sport[0].toUpperCase() + sport.slice(1));
+}
 async function checkBet(bet, env) {
   const sportText = normalize(bet.sport);
   const provider = /futbol|football|soccer/.test(sportText) ? 'football' :
     /basket|baloncesto|nba/.test(sportText) ? 'basketball' :
-    /hockey|floorball/.test(sportText) ? 'hockey' : null;
+    /hockey|floorball/.test(sportText) ? 'hockey' :
+    /rugby/.test(sportText) ? 'rugby' :
+    /baseball|beisbol|softbol|softball/.test(sportText) ? 'baseball' :
+    /handball|balonmano/.test(sportText) ? 'handball' :
+    /volleyball|voleibol/.test(sportText) ? 'volleyball' : null;
   if (!provider) return { status: 'unsupported', message: 'Este deporte todavía no está conectado. API-Sports cubre más deportes; ampliaremos su adaptador.' };
   const config = SPORT_CONFIG[provider];
   const apiKey = env['API_SPORTS_' + provider.toUpperCase() + '_KEY'] || env.API_SPORTS_KEY;
@@ -259,7 +281,8 @@ async function checkBet(bet, env) {
   for (const date of dateCandidates(eventDate)) {
     const checked = provider === 'football' ? await checkFootball(bet, config, apiKey, date) :
       provider === 'basketball' ? await checkBasketball(bet, config, apiKey, date) :
-      await checkHockey(bet, config, apiKey, date);
+      provider === 'hockey' ? await checkHockey(bet, config, apiKey, date) :
+      await checkScoreSport(bet, config, apiKey, date, provider);
     if (checked) return checked;
   }
   return { status: 'not_found', message: 'No se encontró un encuentro que coincida con los equipos y la fecha.' };
