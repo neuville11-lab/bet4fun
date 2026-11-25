@@ -464,7 +464,7 @@ function openModal(prefill = {}) {
 function closeModal() { $('#modal').classList.remove('open'); $('#modal').setAttribute('aria-hidden', 'true'); pendingCaptureId = null; pendingCaptureName = ''; pendingCaptureOcrText = ''; }
 function showPage(name) {
   if (name === 'usuarios' && !isAdmin) name = 'dashboard';
-  $('.page').forEach(page => page.classList.toggle('active-page', page.id === `page-${name}`));
+  $$('.page').forEach(page => page.classList.toggle('active-page', page.id === `page-${name}`));
   $$('.nav-item').forEach(link => link.classList.toggle('active', link.dataset.page === name));
   $('#crumb-name').textContent = ({ dashboard: 'Resumen', apuestas: 'Mis apuestas', promos: 'Freebets', datos: 'Datos', capturas: 'Capturas', usuarios: 'Usuarios' })[name] || 'Resumen';
   history.replaceState(null, '', `#${name}`);
