@@ -70,8 +70,8 @@ function scoreForSelection(selection, bet, game, sport) {
   if (/\b(?:empate|draw|tie)\b/.test(text)) return scores.home === scores.away ? 1 : 0;
   const firstSide = eventSides[0] && (eventSides[0].includes(homeName) || homeName.includes(eventSides[0])) ? 'home' : 'away';
   const secondSide = firstSide === 'home' ? 'away' : 'home';
-  if (/1(?:er|º|o)? equipo|primer equipo|home|local/.test(text)) return scores[firstSide];
-  if (/2(?:o|º|do)? equipo|segundo equipo|away|visitante/.test(text)) return scores[secondSide];
+  if (/1\s*(?:er|º|o)?\s*equipo|primer equipo|home|local/.test(text)) return scores[firstSide];
+  if (/2\s*(?:o|º|do)?\s*equipo|segundo equipo|away|visitante/.test(text)) return scores[secondSide];
   if (homeName && text.includes(homeName)) return scores.home;
   if (awayName && text.includes(awayName)) return scores.away;
   if (/corn|corner/.test(text)) return null;
@@ -143,7 +143,8 @@ function footballStatsValue(rows, teamName, metric) {
   if (!aliases) return null;
   const team = rows.find(row => normalize(row.team?.name).includes(teamName) || teamName.includes(normalize(row.team?.name)));
   const stat = team?.statistics?.find(item => aliases.includes(normalize(item.type)));
-  const number = Number(String(stat?.value ?? '').replace('%', ''));
+  if (stat?.value == null || stat.value === '') return null;
+  const number = Number(String(stat.value).replace('%', ''));
   return Number.isFinite(number) ? number : null;
 }
 function evaluate(actual, market) {
@@ -195,8 +196,8 @@ async function checkFootball(bet, config, apiKey, date) {
     const market = parsed[index];
     let actual = null;
     if (market.metric === 'corners' || market.metric === 'yellow cards' || market.metric === 'shots on goal' || market.metric === 'fouls' || market.metric === 'offsides') {
-      const isFirst = /1(?:er|º|o)? equipo|primer equipo/.test(market.selection);
-      const isSecond = /2(?:o|º|do)? equipo|segundo equipo/.test(market.selection);
+      const isFirst = /1\s*(?:er|º|o)?\s*equipo|primer equipo/.test(market.selection);
+      const isSecond = /2\s*(?:o|º|do)?\s*equipo|segundo equipo/.test(market.selection);
       const teamName = isFirst ? (firstIsHome ? normalize(sides.home?.name) : normalize(sides.away?.name))
         : isSecond ? (firstIsHome ? normalize(sides.away?.name) : normalize(sides.home?.name)) : null;
       if (teamName) actual = footballStatsValue(stats, teamName, market.metric);
