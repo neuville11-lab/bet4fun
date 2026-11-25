@@ -601,6 +601,19 @@ function titleCaseName(value) {
   if (parts.length === 2 && parts[0] === parts[0].toLocaleUpperCase('es-ES') && parts[1] !== parts[1].toLocaleUpperCase('es-ES')) parts.reverse();
   return parts.map(part => part.charAt(0).toLocaleUpperCase('es-ES') + part.slice(1).toLocaleLowerCase('es-ES')).join(' ');
 }
+function reconcileTotalThresholds(rows) {
+  if (rows.length !== 2) return;
+  const normalize = value => String(value || '').normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').toLowerCase();
+  const highPattern = /\\btotal\\s*(?:(?:>=|≥|>)\\s*)?7\\b/i;
+  const lowPattern = /\\b(?:inferior(?:\\s+a)?|under|menos\\s+de)\\s*6[.,]5\\b/i;
+  const high = rows.find(row => highPattern.test(row.selection));
+  const low = rows.find(row => lowPattern.test(row.selection));
+  if (!high || !low) return;
+  const highContext = normalize(high.selection).replace(/\\btotal\\s*(?:(?:>=|≥|>)\\s*)?7\\b/i, '').replace(/[^a-z0-9]/g, '');
+  const lowContext = normalize(low.selection).replace(/\\b(?:inferior(?:\\s+a)?|under|menos\\s+de)\\s*6[.,]5\\b/i, '').replace(/[^a-z0-9]/g, '');
+  if (!highContext || highContext !== lowContext) return;
+  high.selection = high.selection.replace(/\\btotal\\s*(?:(?:>=|≥|>)\\s*)?7\\b/i, 'Total ≥7');
+}
 function parseCaptureBet(words, rawText, imageWidth) {
   const lines = groupOcrLines(words);
   const clean = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
@@ -684,6 +697,7 @@ function parseCaptureBet(words, rawText, imageWidth) {
       oddsBox: { x0: oddsWord.word.bbox.x0, y0: Math.min(...line.words.map(word => word.bbox.y0)), x1: oddsWord.word.bbox.x1, y1: Math.max(...line.words.map(word => word.bbox.y1)) }
     });
   });
+  reconcileTotalThresholds(legRows);
   legRows.sort((a, b) => a.y - b.y);
   const fields = { event, player, sport, eventAt };
   legRows.slice(0, 2).forEach((leg, index) => {
