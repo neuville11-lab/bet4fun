@@ -52,7 +52,25 @@
   <script src="supabase-config.js?v=2"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script>if (!window.supabase?.createClient) document.write('<script src="https://unpkg.com/@supabase/supabase-js@2"><\/script>');</script>
-  <script src="app.js?v=21"></script>
+  <script>
+    (async () => {
+      const oauth = new URLSearchParams(location.hash.slice(1));
+      const accessToken = oauth.get('access_token');
+      const refreshToken = oauth.get('refresh_token');
+      if (accessToken && refreshToken && window.supabase?.createClient && window.BET4FUN_SUPABASE_URL && window.BET4FUN_SUPABASE_ANON_KEY) {
+        try {
+          const authClient = window.supabase.createClient(window.BET4FUN_SUPABASE_URL, window.BET4FUN_SUPABASE_ANON_KEY, { auth: { detectSessionInUrl: false } });
+          const { error } = await authClient.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+          if (!error) history.replaceState(null, document.title, location.pathname + location.search);
+        } catch (error) {
+          console.error('No se pudo restaurar la sesión de Google.');
+        }
+      }
+      const app = document.createElement('script');
+      app.src = 'app.js?v=22';
+      document.body.appendChild(app);
+    })();
+  </script>
 </body></html>
 
 
