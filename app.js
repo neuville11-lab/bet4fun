@@ -77,7 +77,7 @@ function setCloudStatus(message, isError = false) {
   status.classList.toggle('cloud-online', !isError && Boolean(cloudUser));
   status.classList.toggle('local-mode', !cloudUser);
   const button = $('#cloud-account');
-  if (button) button.textContent = cloudUser ? 'Salir' : 'Conectar cuenta';
+  if (button) button.textContent = cloudUser ? 'Salir' : 'Entrar con Google';
   const footer = $('#footer-storage-note');
   if (footer) footer.textContent = cloudUser ? 'Tus apuestas están sincronizadas con tu cuenta' : supabaseConfigReady ? 'Inicia sesión para sincronizar tus apuestas' : 'Los datos todavía se guardan en este dispositivo';
 }
@@ -86,7 +86,7 @@ function showCloudGate(message = 'Inicia sesión con Google para cargar tus apue
   gate.hidden = false;
   $('#cloud-gate-message').textContent = message;
   $('#cloud-gate-message').classList.toggle('cloud-error-text', error);
-  document.body.classList.add('cloud-locked');
+  document.body.classList.remove('cloud-locked');
 }
 function hideCloudGate() {
   $('#cloud-gate').hidden = true;
