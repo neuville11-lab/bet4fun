@@ -88,7 +88,7 @@ function showCloudGate(message = 'Inicia sesión con Google para cargar tus apue
   gate.hidden = false;
   $('#cloud-gate-message').textContent = message;
   $('#cloud-gate-message').classList.toggle('cloud-error-text', error);
-  document.body.classList.remove('cloud-locked');
+  document.body.classList.add('cloud-locked');
 }
 function hideCloudGate() {
   $('#cloud-gate').hidden = true;
@@ -391,7 +391,6 @@ function renderNextEvent() {
 }
 function renderData() {
   const houses = new Map(), sports = new Map();
-  let legsCount = 0, errorLegs = 0, errorImpact = 0;
   bets.forEach(bet => {
     const sport = bet.sport || 'Sin especificar';
     const group = sports.get(sport) || { count: 0, potential: 0 };
@@ -399,33 +398,21 @@ function renderData() {
     if (openBet(bet) && !needsReview(bet)) group.potential += potential(bet);
     sports.set(sport, group);
     bet.legs.forEach(leg => {
-      legsCount += 1;
       const house = houses.get(leg.bookmaker) || { count: 0, amount: 0 };
-      house.count += 1; house.amount += Number(leg.stake || 0); houses.set(leg.bookmaker, house);
-      if (leg.humanError) { errorLegs += 1; errorImpact += Number(leg.errorImpact || 0); }
+      house.count += 1;
+      house.amount += Number(leg.stake || 0);
+      houses.set(leg.bookmaker, house);
     });
   });
   const houseList = [...houses.entries()].sort((a, b) => b[1].amount - a[1].amount);
   const sportList = [...sports.entries()].sort((a, b) => b[1].count - a[1].count);
   $('#bookmaker-count').textContent = houseList.length;
   $('#bookmaker-volume').textContent = money(bets.reduce((sum, bet) => sum + totalStake(bet), 0));
-  $('#error-rate').innerHTML = `${legsCount ? (errorLegs / legsCount * 100).toLocaleString('es-ES', { maximumFractionDigits: 1 }) : '0'}<span class="unit">%</span>`;
-  $('#error-count').textContent = `${errorLegs} de ${legsCount} apuestas individuales con error`;
-  $('#error-impact').textContent = money(errorImpact);
   const maxHouseAmount = Math.max(1, ...houseList.map(([, item]) => item.amount));
   $('#bookmaker-chart').innerHTML = houseList.map(([name, item]) => `<div class="visual-bar-row"><div class="visual-bar-head"><b>${escapeHtml(name)}</b><strong>${money(item.amount)}</strong></div><div class="visual-bar-track"><i class="house-bar" style="width:${Math.max(2, item.amount / maxHouseAmount * 100)}%"></i></div><small>${item.count} ${item.count === 1 ? 'apuesta individual' : 'apuestas individuales'}</small></div>`).join('');
   $('#sport-chart').innerHTML = sportList.map(([sport, item]) => `<div class="visual-bar-row"><div class="visual-bar-head"><b><span class="sport-emoji" aria-hidden="true">${sportEmoji(sport)}</span>${escapeHtml(sport)}</b><strong>${item.count} ${item.count === 1 ? 'apuesta' : 'apuestas'}</strong></div><div class="visual-bar-track"><i class="sport-bar" style="width:${Math.max(3, item.count / Math.max(1, ...sportList.map(([, value]) => value.count)) * 100)}%"></i></div><small>Beneficio potencial ${money(item.potential)}</small></div>`).join('');
-  const errorRate = legsCount ? errorLegs / legsCount * 100 : 0;
-  $('#error-donut').style.setProperty('--error-rate', `${errorRate}%`);
-  $('#error-donut').setAttribute('aria-label', `${errorRate.toLocaleString('es-ES', { maximumFractionDigits: 1 })}% de errores humanos`);
-  $('#error-donut-rate').textContent = `${errorRate.toLocaleString('es-ES', { maximumFractionDigits: 1 })}%`;
-  $('#error-donut-count').textContent = `${errorLegs} de ${legsCount} apuestas`;
-  $('#error-impact-visual').textContent = money(errorImpact);
   $('#bookmaker-chart-empty').classList.toggle('visible', !houseList.length);
   $('#sport-chart-empty').classList.toggle('visible', !sportList.length);
-  const errors = bets.flatMap(bet => bet.legs.filter(leg => leg.humanError).map(leg => ({ bet, leg })));
-  $('#error-history').innerHTML = errors.map(({ bet, leg }) => `<div class="error-row"><span class="error-mark small">!</span><div><b>${escapeHtml(leg.bookmaker)} · ${escapeHtml(leg.selection)}</b><small>${escapeHtml(bet.event)} · ${dayLabel(bet.date)}</small></div><strong>${money(leg.errorImpact)}</strong></div>`).join('');
-  $('#error-empty').classList.toggle('visible', !errors.length);
   renderNoteAnalysis();
 }
 function renderNoteAnalysis() {
