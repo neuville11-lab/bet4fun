@@ -228,7 +228,7 @@ function statusMarkup(bet) {
   return `<span class="status-chip pending">Evento · ${shortDate(bet.eventAt)}</span>`;
 }
 function reviewActions(bet) {
-  return `<div class="review-actions"><button data-analyze="${escapeHtml(bet.id)}">${bet.legs.some(leg => leg.outcome) ? 'Editar análisis' : 'Analizar apuesta'}</button></div>`;
+  return `<div class="review-actions"><button data-analyze="${escapeHtml(bet.id)}">${'Buscar resultado'}</button></div>`;
 }
 function workflowMarkup(bet) {
   const id = escapeHtml(bet.id), freebet = Boolean(bet.promoEligible), received = freebet && bet.promoStatus === 'received';
@@ -305,31 +305,62 @@ function editBetNote(id) {
   });
   backdrop.querySelector('textarea').focus();
 }
-function analyzeBet(id) {
+async function analyzeBet(id) {
   const bet = bets.find(item => item.id === id); if (!bet) return;
   const backdrop = document.createElement('div'); backdrop.className = 'analysis-backdrop';
-  backdrop.innerHTML = `<section class="analysis-modal" role="dialog" aria-modal="true" aria-labelledby="analysis-title"><div class="modal-head"><div><div class="eyebrow">REVISIÓN DE RESULTADO</div><h2 id="analysis-title">${escapeHtml(bet.event)}</h2></div><button type="button" class="close-button" data-close-analysis aria-label="Cerrar">×</button></div><p class="analysis-help">Selecciona si cada apuesta fue ganada, no ganada o anulada. BET4FUN calculará en qué casa se acertó y el beneficio neto. Confirma siempre la liquidación en la casa: sus reglas o correcciones pueden variar.</p><form class="analysis-form">${bet.legs.map((leg, index) => `<label class="analysis-leg"><span><b>${escapeHtml(leg.bookmaker)}</b><small>${escapeHtml(leg.selection)}</small></span><select name="outcome-${index}" required><option value="">Selecciona resultado</option><option value="won" ${leg.outcome === 'won' ? 'selected' : ''}>Ganada</option><option value="lost" ${leg.outcome === 'lost' ? 'selected' : ''}>No ganada</option><option value="void" ${leg.outcome === 'void' ? 'selected' : ''}>Anulada</option></select></label>`).join('')}<div class="form-actions"><button type="button" class="secondary-button" data-close-analysis>Cancelar</button><button type="submit" class="primary-button">Guardar análisis</button></div></form></section>`;
+  backdrop.innerHTML = `<section class="analysis-modal" role="dialog" aria-modal="true" aria-labelledby="analysis-title"><div class="modal-head"><div><div class="eyebrow">ANÁLISIS AUTOMÁTICO</div><h2 id="analysis-title">${escapeHtml(bet.event)}</h2></div><button type="button" class="close-button" data-close-analysis aria-label="Cerrar">×</button></div><p class="analysis-help">BET4FUN consultará los datos del partido y comparará cada selección automáticamente. Revisa siempre la liquidación en la casa de apuestas, porque sus reglas y correcciones pueden variar.</p><div class="auto-analysis-status" role="status">Preparando consulta…</div><div class="auto-analysis-results"></div><div class="form-actions"><button type="button" class="secondary-button" data-close-analysis>Cerrar</button><button type="button" class="primary-button" data-run-auto-check>Buscar resultado</button></div></section>`;
   document.body.append(backdrop);
   const close = () => backdrop.remove();
   backdrop.querySelectorAll('[data-close-analysis]').forEach(button => button.addEventListener('click', close));
   backdrop.addEventListener('click', event => { if (event.target === backdrop) close(); });
-  backdrop.querySelector('form').addEventListener('submit', event => {
-    event.preventDefault();
-    const outcomes = bet.legs.map((leg, index) => backdrop.querySelector(`[name="outcome-${index}"]`).value);
-    if (outcomes.some(outcome => !outcome)) return;
-    let actualProfit = 0;
-    bet.legs.forEach((leg, index) => {
-      leg.outcome = outcomes[index];
-      const stake = Number(leg.stake || 0), odds = Number(leg.odds || 0);
-      if (leg.outcome === 'won') actualProfit += stake * (odds - 1);
-      else if (leg.outcome === 'lost') actualProfit -= stake;
-    });
-    bet.actualProfit = Number(actualProfit.toFixed(2));
-    bet.result = outcomes.every(outcome => outcome === 'void') ? 'void' : outcomes.includes('won') ? (actualProfit >= 0 ? 'won' : 'lost') : 'lost';
-    bet.verifiedAt = new Date().toISOString();
-    close(); save();
-  });
+  const status = backdrop.querySelector('.auto-analysis-status');
+  const results = backdrop.querySelector('.auto-analysis-results');
+  const run = backdrop.querySelector('[data-run-auto-check]');
+  const apiUrl = String(window.BET4FUN_API_URL || '').replace(/\/$/, '');
+  if (!apiUrl) {
+    status.textContent = 'La consulta automática todavía no está conectada. Falta configurar el backend de resultados.';
+    run.disabled = true;
+    return;
+  }
+  const runCheck = async () => {
+    run.disabled = true; status.textContent = 'Consultando el resultado del encuentro…'; results.innerHTML = '';
+    try {
+      const response = await fetch(apiUrl + '/check-bet', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          event: bet.event, sport: bet.sport, player: bet.player,
+          eventDate: String(bet.eventAt || '').slice(0, 10),
+          legs: bet.legs.map(leg => ({ bookmaker: leg.bookmaker, selection: leg.selection, odds: leg.odds, stake: leg.stake }))
+        })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || 'No se pudo consultar el proveedor de resultados.');
+      if (data.status !== 'verified' || !Array.isArray(data.legs)) {
+        status.textContent = data.message || 'El proveedor no pudo confirmar automáticamente este evento o mercado.';
+        return;
+      }
+      if (data.legs.length !== bet.legs.length || data.legs.some(item => !['won', 'lost', 'void'].includes(item.outcome))) {
+        status.textContent = 'La respuesta no contiene un resultado completo y fiable para todas las selecciones.';
+        return;
+      }
+      data.legs.forEach((item, index) => { bet.legs[index].outcome = item.outcome; });
+      bet.actualProfit = Number(data.actualProfit || 0);
+      bet.result = data.result || (data.legs.every(item => item.outcome === 'void') ? 'void' : bet.actualProfit >= 0 ? 'won' : 'lost');
+      bet.verifiedAt = data.checkedAt || new Date().toISOString();
+      await save();
+      status.textContent = data.game?.status ? `Partido finalizado · ${data.game.status}` : 'Resultado consultado automáticamente.';
+      results.innerHTML = data.legs.map((item, index) => `<div class="analysis-result-row"><b>${escapeHtml(bet.legs[index].bookmaker)}</b><span>${escapeHtml(bet.legs[index].selection)}</span><strong class="outcome-${item.outcome}">${item.outcome === 'won' ? 'Ganada' : item.outcome === 'lost' ? 'No ganada' : 'Anulada'}${item.actual != null ? ` · ${escapeHtml(item.actual)}` : ''}</strong></div>`).join('') + `<p class="analysis-help">${escapeHtml(data.warning || 'Comprueba también la liquidación en la casa de apuestas.')}</p>`;
+      run.textContent = 'Volver a consultar';
+      run.disabled = false;
+    } catch (error) {
+      status.textContent = error.message || 'No se pudo consultar el resultado. Inténtalo de nuevo más tarde.';
+    } finally {
+      if (run.textContent !== 'Volver a consultar') run.disabled = false;
+    }
+  };
+  run.addEventListener('click', runCheck);
 }
+
 function renderRows() {
   const sorted = [...bets].sort((a, b) => b.date.localeCompare(a.date) || new Date(b.eventAt) - new Date(a.eventAt));
   const filtered = $('#filter-type')?.value || 'Todas';
