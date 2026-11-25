@@ -634,16 +634,16 @@ function titleCaseName(value) {
 }
 function reconcileTotalThresholds(rows) {
   if (rows.length !== 2) return;
-  const normalize = value => String(value || '').normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').toLowerCase();
-  const highPattern = /\\btotal\\s*(?:(?:>=|≥|>)\\s*)?7\\b/i;
-  const lowPattern = /\\b(?:inferior(?:\\s+a)?|under|menos\\s+de)\\s*6[.,]5\\b/i;
+  const normalize = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const highPattern = /\btotal\s*(?:(?:>=|≥|>)\s*)?7\b/i;
+  const lowPattern = /\b(?:inferior(?:\s+a)?|under|menos\s+de)\s*6[.,]5\b/i;
   const high = rows.find(row => highPattern.test(row.selection));
   const low = rows.find(row => lowPattern.test(row.selection));
   if (!high || !low) return;
-  const highContext = normalize(high.selection).replace(/\\btotal\\s*(?:(?:>=|≥|>)\\s*)?7\\b/i, '').replace(/[^a-z0-9]/g, '');
-  const lowContext = normalize(low.selection).replace(/\\b(?:inferior(?:\\s+a)?|under|menos\\s+de)\\s*6[.,]5\\b/i, '').replace(/[^a-z0-9]/g, '');
+  const highContext = normalize(high.selection).replace(/\btotal\s*(?:(?:>=|≥|>)\s*)?7\b/i, '').replace(/[^a-z0-9]/g, '');
+  const lowContext = normalize(low.selection).replace(/\b(?:inferior(?:\s+a)?|under|menos\s+de)\s*6[.,]5\b/i, '').replace(/[^a-z0-9]/g, '');
   if (!highContext || highContext !== lowContext) return;
-  high.selection = high.selection.replace(/\\btotal\\s*(?:(?:>=|≥|>)\\s*)?7\\b/i, 'Total ≥7');
+  high.selection = high.selection.replace(/\btotal\s*(?:(?:>=|≥|>)\s*)?7\b/i, 'Total ≥7');
 }
 function parseCaptureBet(words, rawText, imageWidth) {
   const lines = groupOcrLines(words);
