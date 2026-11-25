@@ -2,21 +2,20 @@
 
 Este Worker consulta API-Sports desde el servidor. La clave se guarda como secreto de Cloudflare y no se publica en el JavaScript de BET4FUN.
 
-## Deportes y mercados conectados
+## Cobertura inicial
 
-La primera versión multi-deporte admite:
+- **Fútbol:** marcador y goles; córneres, tarjetas amarillas, tiros a puerta, faltas y fueras de juego cuando la competición ofrece estadísticas.
+- **Baloncesto:** marcador y totales de puntos; puntos, rebotes y asistencias de jugador.
+- **Hockey:** marcador y totales de goles.
+- **Rugby, béisbol, balonmano y voleibol:** mercados basados en el marcador que devuelva la API.
 
-- **Fútbol:** marcador final, goles totales y mercados de estadísticas de partido disponibles en la competición (córneres, tarjetas amarillas, tiros a puerta, faltas y fueras de juego). En mercados por equipo identifica el primer o segundo equipo cuando la selección lo indica.
-- **Baloncesto:** resultado/puntos y mercados de puntos, rebotes y asistencias de jugador.
-- **Hockey:** resultado y totales de goles cuando la API devuelve el marcador.
+No existe una regla única para todas las apuestas. Si un mercado no está reconocido, la competición no tiene cobertura o faltan estadísticas, BET4FUN deja el resultado sin confirmar. Los mercados de hándicap, ganador, sets y estadísticas especiales se irán añadiendo con reglas específicas; no se deben inferir solo a partir del marcador. Confirma siempre la liquidación en la casa de apuestas.
 
-Se comparan los nombres de los equipos y la fecha del evento antes de consultar estadísticas. Si API-Sports no encuentra el evento, no dispone de esa competición o no ofrece los datos necesarios para la selección, BET4FUN deja el resultado sin confirmar. La cobertura y las estadísticas dependen de cada competición; confirma siempre la liquidación en la casa de apuestas.
-
-API-Sports publica actualmente un plan gratuito de 100 solicitudes diarias por API deportiva. Una consulta puede consumir varias solicitudes cuando se buscan fechas cercanas o estadísticas adicionales; revisa el contador del panel de API-Sports.
+API-Sports publica un plan gratuito de 100 solicitudes diarias por API deportiva. Una consulta puede consumir varias solicitudes al buscar fechas cercanas y estadísticas; revisa el contador del panel. La disponibilidad de datos también varía por competición.
 
 ## Puesta en marcha
 
-1. Crea una cuenta en [API-Sports](https://api-sports.io/) y activa las APIs de los deportes que quieras consultar (Football, Basketball, Hockey). Copia la clave desde su panel.
+1. Crea una cuenta en [API-Sports](https://api-sports.io/) y activa los deportes que quieras usar. Copia la clave desde su panel.
 2. Crea una cuenta gratuita de Cloudflare e instala Node.js en el ordenador desde el que desplegarás el Worker.
 3. Abre una terminal en esta carpeta y ejecuta:
 
@@ -25,7 +24,7 @@ API-Sports publica actualmente un plan gratuito de 100 solicitudes diarias por A
    npx wrangler secret put API_SPORTS_KEY
    ```
 
-   Wrangler pedirá la clave de forma interactiva. No la pegues en el código ni en GitHub.
+   Wrangler te pedirá la clave de forma interactiva. No la pegues en el código ni en GitHub.
 4. Despliega el Worker:
 
    ```powershell
@@ -38,6 +37,6 @@ API-Sports publica actualmente un plan gratuito de 100 solicitudes diarias por A
    window.BET4FUN_API_URL = 'https://tu-worker.tu-subdominio.workers.dev';
    ```
 
-6. Publica el cambio de `api-config.js` en GitHub Pages. En la página, el botón **Buscar resultado** consultará el Worker automáticamente.
+6. Publica `api-config.js` en GitHub Pages. El botón **Buscar resultado** consultará el Worker.
 
-El Worker limita las solicitudes al dominio público de BET4FUN. No pongas la clave API en `api-config.js`: ese archivo sí se descarga en el navegador.
+El Worker solo acepta solicitudes desde el dominio público de BET4FUN. No pongas la clave API en `api-config.js`: ese archivo se descarga en el navegador.
