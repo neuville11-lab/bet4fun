@@ -1,6 +1,8 @@
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const STORAGE_KEY = 'bet4fun-bets';
+const ADMIN_EMAIL = 'enekogoenaga74@gmail.com';
+let isAdmin = false;
 const PROFILE_KEY = 'bet4fun-profile';
 const LEGACY_SAMPLE_ID = 'bet4fun-lakers-jazz-2026-11-18';
 const savedBets = (() => { try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); } catch { return []; } })();
@@ -118,13 +120,37 @@ async function syncBetsToCloud() {
   localStorage.setItem(`${STORAGE_KEY}:${cloudUser.id}`, JSON.stringify(bets));
   setCloudStatus('Sincronizado con la nube');
 }
+function setAdminAccess(user) {
+  isAdmin = String(user?.email || '').trim().toLowerCase() === ADMIN_EMAIL;
+  const link = $('#nav-users'), page = $('#page-usuarios');
+  if (link) link.hidden = !isAdmin;
+  if (page) page.hidden = !isAdmin;
+  if (!isAdmin && location.hash === '#usuarios') showPage('dashboard');
+}
+async function loadAdminUsers() {
+  if (!isAdmin || !cloud || !cloudUser) return;
+  const body = $('#admin-user-rows'), count = $('#admin-user-count');
+  body.innerHTML = '<tr><td colspan="4">Cargando cuentas…</td></tr>';
+  count.textContent = 'Cargando…';
+  const { data, error } = await cloud.rpc('admin_list_users');
+  if (error) {
+    count.textContent = 'No disponible';
+    body.innerHTML = `<tr><td colspan="4">${escapeHtml(error.message.includes('admin_list_users') ? 'Activa el listado privado con el SQL incluido en el repositorio.' : 'No se pudo cargar la lista de cuentas.')}</td></tr>`;
+    return;
+  }
+  const users = Array.isArray(data) ? data : [];
+  count.textContent = `${users.length} ${users.length === 1 ? 'cuenta registrada' : 'cuentas registradas'}`;
+  body.innerHTML = users.length ? users.map(user => `<tr><td>${escapeHtml(user.display_name || 'Sin nombre')}</td><td>${escapeHtml(user.email || '')}</td><td>${escapeHtml(new Date(user.created_at).toLocaleString('es-ES'))}</td><td>${user.last_sign_in_at ? escapeHtml(new Date(user.last_sign_in_at).toLocaleString('es-ES')) : 'Nunca'}</td></tr>`).join('') : '<tr><td colspan="4">Todavía no hay cuentas.</td></tr>';
+}
 async function acceptCloudSession(session) {
   const user = session?.user;
   if (!user) {
+    setAdminAccess(null);
     cloudUser = null; cloudLoaded = false; bets = [];
     updateDashboard(); showCloudGate('Inicia sesión con Google para cargar tus apuestas privadas.'); setCloudStatus('Sesión cerrada');
     return;
   }
+  setAdminAccess(user);
   if (cloudUser?.id === user.id && cloudLoaded) return;
   cloudUser = user; cloudLoaded = false;
   setCloudStatus('Cargando apuestas…'); showCloudGate('Cargando tus apuestas guardadas…');
@@ -437,11 +463,13 @@ function openModal(prefill = {}) {
 }
 function closeModal() { $('#modal').classList.remove('open'); $('#modal').setAttribute('aria-hidden', 'true'); pendingCaptureId = null; pendingCaptureName = ''; pendingCaptureOcrText = ''; }
 function showPage(name) {
-  $$('.page').forEach(page => page.classList.toggle('active-page', page.id === `page-${name}`));
+  if (name === 'usuarios' && !isAdmin) name = 'dashboard';
+  $('.page').forEach(page => page.classList.toggle('active-page', page.id === `page-${name}`));
   $$('.nav-item').forEach(link => link.classList.toggle('active', link.dataset.page === name));
-  $('#crumb-name').textContent = ({ dashboard: 'Resumen', apuestas: 'Mis apuestas', promos: 'Freebets', datos: 'Datos', capturas: 'Capturas' })[name] || 'Resumen';
+  $('#crumb-name').textContent = ({ dashboard: 'Resumen', apuestas: 'Mis apuestas', promos: 'Freebets', datos: 'Datos', capturas: 'Capturas', usuarios: 'Usuarios' })[name] || 'Resumen';
   history.replaceState(null, '', `#${name}`);
   if (name === 'capturas') return renderCaptures();
+  if (name === 'usuarios') return loadAdminUsers();
 }
 
 $('#today').textContent = new Intl.DateTimeFormat('es-ES', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }).format(new Date());
@@ -464,7 +492,8 @@ $('#cloud-account').addEventListener('click', async () => {
   const { error } = await cloud.auth.signOut();
   if (error) setCloudStatus(`No se pudo cerrar sesión: ${error.message}`, true);
 });
-$$('.nav-item').forEach(link => link.addEventListener('click', e => { e.preventDefault(); showPage(link.dataset.page); }));
+$('.nav-item').forEach(link => link.addEventListener('click', e => { e.preventDefault(); showPage(link.dataset.page); }));
+$('#admin-users-refresh').addEventListener('click', loadAdminUsers);
 $$('[data-page-link]').forEach(link => link.addEventListener('click', () => showPage(link.dataset.pageLink)));
 $$('[data-open-form]').forEach(button => button.addEventListener('click', openModal));
 $('#close-modal').addEventListener('click', closeModal); $('#cancel-modal').addEventListener('click', closeModal);
