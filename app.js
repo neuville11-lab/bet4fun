@@ -95,8 +95,17 @@ async function loginWithGoogle() {
     window.alert('Falta configurar BET4FUN_SUPABASE_URL y BET4FUN_SUPABASE_ANON_KEY en supabase-config.js.');
     return;
   }
-  const { error } = await cloud.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: location.origin + location.pathname } });
-  if (error) { showCloudGate(`No se pudo iniciar sesión: ${error.message}`, true); setCloudStatus('Error al conectar', true); }
+  try {
+    if (!cloud) {
+      if (!window.supabase?.createClient) throw new Error('No se pudo cargar el servicio de cuenta. Recarga la página e inténtalo de nuevo.');
+      cloud = window.supabase.createClient(window.BET4FUN_SUPABASE_URL, window.BET4FUN_SUPABASE_ANON_KEY);
+    }
+    const { error } = await cloud.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: location.origin + location.pathname } });
+    if (error) throw error;
+  } catch (error) {
+    showCloudGate(`No se pudo iniciar sesión: ${error.message}`, true);
+    setCloudStatus('Error al conectar', true);
+  }
 }
 async function syncBetsToCloud() {
   if (!cloudUser || !cloudLoaded) return;
@@ -433,7 +442,6 @@ $('#filter-type').addEventListener('change', renderRows);
 $('#notes-month').addEventListener('change', renderNoteAnalysis);
 showPage(location.hash.slice(1) && $(`#page-${location.hash.slice(1)}`) ? location.hash.slice(1) : 'dashboard');
 updateDashboard(); setInterval(updateDashboard, 30000);
-initializeCloud();
 
 function openCaptureDb() {
   if (captureDbPromise) return captureDbPromise;
@@ -699,5 +707,6 @@ uploadZone.addEventListener('keydown', event => { if (event.key === 'Enter' || e
 uploadZone.addEventListener('dragover', event => { event.preventDefault(); uploadZone.classList.add('drag-active'); });
 uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag-active'));
 uploadZone.addEventListener('drop', event => { event.preventDefault(); uploadZone.classList.remove('drag-active'); addCaptureFiles(event.dataTransfer.files); });
+initializeCloud();
 
 
