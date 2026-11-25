@@ -205,7 +205,10 @@ async function checkFootball(bet, config, apiKey, date) {
       const teamName = isFirst ? (firstIsHome ? normalize(sides.home?.name) : normalize(sides.away?.name))
         : isSecond ? (firstIsHome ? normalize(sides.away?.name) : normalize(sides.home?.name)) : null;
       if (teamName) actual = footballStatsValue(stats, teamName, market.metric);
-      else actual = stats.reduce((sum, row) => sum + (footballStatsValue([row], normalize(row.team?.name), market.metric) || 0), 0);
+      else {
+        const values = stats.map(row => footballStatsValue([row], normalize(row.team?.name), market.metric));
+        actual = values.length >= 2 && values.every(value => value !== null) ? values.reduce((sum, value) => sum + value, 0) : null;
+      }
     } else {
       actual = scoreForSelection(leg.selection, bet, game, 'football');
     }
