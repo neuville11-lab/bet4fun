@@ -560,6 +560,8 @@ function parseCaptureBet(words, rawText, imageWidth) {
   const legRows = [];
   lines.forEach(line => {
     const rowWords = line.words.slice().sort((a, b) => centerX(a) - centerX(b));
+    const rowText = clean(rowWords.map(word => word.text).join(' '));
+    if (/apuesta\s+total|evento\s+en|\broi\b|\bsurebet\b/.test(rowText)) return;
     const numeric = rowWords.map(word => ({ word, x: centerX(word), value: numberValue(word) })).filter(item => Number.isFinite(item.value));
     if (!numeric.length) return;
     let oddsWord, stakeWord, profitWord;
@@ -580,7 +582,10 @@ function parseCaptureBet(words, rawText, imageWidth) {
     if (!leftWords.length) return;
     const normalizedLeft = clean(leftWords.map(word => word.text).join(' ')).replace(/[^a-z0-9]/g, '');
     const knownBook = bookmakers.find(name => normalizedLeft.includes(name.replace(/[^a-z0-9]/g, '')));
-    const regionIndex = leftWords.findIndex(word => /^\(?[A-Z]{2}\)?$/i.test(word.text.trim()));
+    const regionIndex = leftWords.findIndex(word => /^\(?[A-Z]{2,3}\)?$/.test(word.text.trim()));
+    // Do not turn event headings, table labels, or arbitrary words into a
+    // bookmaker just because the line also contains some numbers.
+    if (!knownBook && regionIndex < 0) return;
     const quotaBoundary = oddsStart ?? (oddsX * 0.42);
     let bookmakerWords;
     if (knownBook) {
@@ -590,7 +595,7 @@ function parseCaptureBet(words, rawText, imageWidth) {
       bookmakerWords = brandIndex >= 0 ? tokens.slice(brandIndex, brandIndex + 2) : tokens;
     } else if (regionIndex >= 0) bookmakerWords = leftWords.slice(0, regionIndex);
     else bookmakerWords = leftWords.filter(word => centerX(word) < quotaBoundary);
-    const bookmaker = bookmakerWords.map(word => word.text).filter(word => !/^\(?[A-Z]{2}\)?$/i.test(word.trim())).join(' ').trim();
+    const bookmaker = bookmakerWords.map(word => word.text).filter(word => !/^\(?[A-Z]{2,3}\)?$/.test(word.trim())).join(' ').trim();
     const selectionWords = rowWords.filter(word => centerX(word) >= quotaBoundary - 0.01 && centerX(word) < oddsX - 0.02);
     const selection = selectionWords.map(word => word.text).join(' ').replace(/\s+/g, ' ').trim();
     if (!bookmaker || !selection) return;
