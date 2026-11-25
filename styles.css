@@ -37,3 +37,5 @@ body{background-color:var(--bg);background-image:radial-gradient(#1c29300c .7px,
 @media(max-width:650px){.cloud-status{display:none}.cloud-gate-card{padding:26px 20px}.cloud-gate-card h1{font-size:30px}.cloud-account-button{padding:7px}.top-actions{gap:7px}}
 .cloud-gate{background:#17212a}body.cloud-locked>.sidebar,body.cloud-locked>.main{visibility:hidden}
 
+
+[hidden]{display:none!important}.admin-users-panel{margin-top:18px}.admin-users-panel .panel-heading{margin-bottom:12px}.admin-users-panel table{min-width:720px}.admin-privacy-note{margin:16px 0 0;color:#758078;font-size:12px}
