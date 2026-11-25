@@ -599,7 +599,10 @@ function parseCaptureBet(words, rawText, imageWidth) {
     const selectionWords = rowWords.filter(word => centerX(word) >= quotaBoundary - 0.01 && centerX(word) < oddsX - 0.02);
     const selection = selectionWords.map(word => word.text).join(' ').replace(/\s+/g, ' ').trim();
     if (!bookmaker || !selection) return;
-    legRows.push({ bookmaker, selection, odds: oddsWord.value.toString(), stake: stakeWord.value.toString(), profit: profitWord.value.toString(), y: line.y });
+    legRows.push({
+      bookmaker, selection, odds: oddsWord.value.toString(), stake: stakeWord.value.toString(), profit: profitWord.value.toString(), y: line.y,
+      oddsBox: { x0: oddsWord.word.bbox.x0, y0: Math.min(...line.words.map(word => word.bbox.y0)), x1: oddsWord.word.bbox.x1, y1: Math.max(...line.words.map(word => word.bbox.y1)) }
+    });
   });
   legRows.sort((a, b) => a.y - b.y);
   const fields = { event, player, sport, eventAt };
@@ -611,9 +614,8 @@ function parseCaptureBet(words, rawText, imageWidth) {
     fields[`stake${number}`] = leg.stake;
     fields[`profit${number}`] = leg.profit;
   });
-  return { fields, legCount: legRows.length, lines, text: allText };
+  return { fields, legCount: legRows.length, legRows, lines, text: allText };
 }
-
 async function prepareCaptureImage(blob) {
   const bitmap = await createImageBitmap(blob);
   const scale = Math.min(3, Math.max(2, 2200 / bitmap.width));
@@ -659,11 +661,32 @@ async function readCapture(file) {
         (/\\b(?:apuesta|cuota|beneficio)\\b/i.test(text) ? 3 : 0);
       results.push({ parsed, score });
     }
-    return results.sort((a, b) => b.score - a.score)[0].parsed;
+    const parsed = results.sort((a, b) => b.score - a.score)[0].parsed;
+    // Re-read each odds cell at higher magnification with a numeric-only
+    // whitelist. Small Surebet screenshots often turn 1.680 into 1.08.
+    for (const [index, leg] of parsed.legRows.entries()) {
+      const box = leg.oddsBox;
+      if (!box) continue;
+      const padX = Math.max(18, (box.x1 - box.x0) * 1.25);
+      const padY = Math.max(8, (box.y1 - box.y0) * 0.2);
+      const x0 = Math.max(0, box.x0 - padX), y0 = Math.max(0, box.y0 - padY);
+      const x1 = Math.min(canvas.width, box.x1 + padX), y1 = Math.min(canvas.height, box.y1 + padY);
+      const crop = document.createElement('canvas');
+      crop.width = Math.max(1, Math.round((x1 - x0) * 3));
+      crop.height = Math.max(1, Math.round((y1 - y0) * 3));
+      crop.getContext('2d').drawImage(canvas, x0, y0, x1 - x0, y1 - y0, 0, 0, crop.width, crop.height);
+      await worker.setParameters({ tessedit_pageseg_mode: '7', tessedit_char_whitelist: '0123456789.,' });
+      const oddsResult = await worker.recognize(crop);
+      const match = String(oddsResult.data.text || '').replace(/\s/g, '').match(/\d{1,3}[.,]\d{1,3}/);
+      const value = match ? Number(match[0].replace(',', '.')) : NaN;
+      if (Number.isFinite(value) && value > 1 && value <= 1000) parsed.fields[`odds${index + 1}`] = value.toString();
+    }
+    return parsed;
   } finally {
     if (worker) await worker.terminate();
   }
 }
+
 async function renderCaptures() {
   const grid = $('#capture-grid'); if (!grid) return;
   try {
