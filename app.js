@@ -527,41 +527,76 @@ function parseCaptureBet(words, rawText, imageWidth) {
   const allText = String(rawText || lines.map(line => line.text).join('\n'));
   const dateMatch = allText.match(/\b(20\d{2})[-/.](\d{1,2})[-/.](\d{1,2})\D{0,12}(\d{1,2}):(\d{2})/);
   const eventIndex = lines.findIndex(line => /\s(?:vs\.?|[-–—])\s/i.test(line.text) && line.text.length > 9 && !/superior|inferior|over|under|mas de|menos de/i.test(line.text));
-  const event = eventIndex >= 0 ? lines[eventIndex].text.replace(/\s+/g, ' ').trim() : '';
+  const event = eventIndex >= 0 ? lines[eventIndex].text.replace(/\s+/g, ' ').replace(/\s+\d+(?:[.,]\d+)?\s*%\s*$/, '').trim() : '';
   const heading = eventIndex > 0 ? lines.slice(0, eventIndex).reverse().find(line => line.text.trim() && !/\d{4}[-/.]\d{1,2}[-/.]\d{1,2}|evento en|cuota|apuesta|roi/i.test(line.text))?.text : '';
   const headingWords = String(heading || '').trim().split(/\s+/).filter(Boolean);
   const plausiblePlayer = headingWords.length >= 2 && headingWords.length <= 3 &&
     headingWords.every(word => /^[\p{L}][\p{L}'’.-]*$/u.test(word)) &&
     !/baloncesto|basket|futbol|football|tenis|tennis|nba|liga|champions|league|total|superior|inferior|servette|barcelona/i.test(heading);
   const player = plausiblePlayer ? titleCaseName(heading) : '';
-  const sport = lines.find(line => /baloncesto|basketball|futbol|football|soccer|tenis|tennis|nba|laliga|premier/i.test(clean(line.text)))?.text || '';
+  const sportPattern = /baloncesto|basketball|basket|futbol|football|soccer|hockey|floorball|tenis|tennis|beisbol|baseball|rugby|voleibol|volleyball|balonmano|handball|golf|boxeo|boxing|mma|ufc|formula\s*1|\bf1\b|ciclismo|cycling|natacion|swimming|atletismo|\bnba\b|\bnfl\b|\bmlb\b|\bnhl\b|laliga|premier\s+league|champions\s+league/i;
+  const sportLine = lines.findIndex((line, index) => index !== eventIndex && sportPattern.test(clean(line.text)));
+  const sport = sportLine >= 0 ? lines[sportLine].text.replace(/\s+/g, ' ').trim() : '';
   const date = dateMatch ? `${dateMatch[1]}-${dateMatch[2].padStart(2, '0')}-${dateMatch[3].padStart(2, '0')}` : '';
   const eventAt = dateMatch ? `${date}T${dateMatch[4].padStart(2, '0')}:${dateMatch[5]}` : '';
   const width = Number(imageWidth) || 1;
+  const centerX = word => ((word.bbox.x0 + word.bbox.x1) / 2) / width;
+  const numberValue = word => {
+    const raw = String(word?.text || '').replace(/[^\d.,-]/g, '').replace(',', '.');
+    return /^-?\d+(?:\.\d+)?$/.test(raw) ? Number(raw) : NaN;
+  };
+  const header = lines.find(line => {
+    const labels = line.words.map(word => clean(word.text).replace(/[^a-z]/g, ''));
+    return labels.includes('cuota') && labels.includes('apuesta') && labels.includes('beneficio');
+  });
+  const headerX = label => {
+    const word = header?.words.find(item => clean(item.text).replace(/[^a-z]/g, '') === label);
+    return word ? centerX(word) : null;
+  };
+  const oddsStart = headerX('cuota');
+  const stakeStart = headerX('apuesta');
+  const profitStart = headerX('beneficio');
+  const bookmakers = ['jokerbet', 'winamax', 'pokerstars', 'ol ybet', 'olybet', 'retabet', 'wplay', 'bet365', 'betfair', 'betway', 'bwin', 'codere', 'luckia', 'marathonbet', '1xbet', 'sportium', 'pinnacle', 'betano', 'novibet', 'suertia'];
   const legRows = [];
   lines.forEach(line => {
-    const directionIndex = line.words.findIndex(word => /^(total|superior|inferior|over|under|mas|menos|mayor|menor)$/i.test(clean(word.text)));
-    if (directionIndex < 0) return;
-    const directionWord = clean(line.words[directionIndex].text);
-    const thresholdIndex = line.words.findIndex((word, index) => index > directionIndex && /^\d+(?:[.,]\d+)?$/.test(word.text.replace(/[^\d.,]/g, '')));
-    if (thresholdIndex < 0) return;
-    const coords = line.words.map((word, index) => ({
-      word, index, x: ((word.bbox.x0 + word.bbox.x1) / 2) / width,
-      value: word.text.replace(/[^\d.,]/g, '').replace(',', '.')
-    }));
-    const numeric = coords.filter(item => item.index > thresholdIndex && /^\d+(?:\.\d+)?$/.test(item.value));
-    const inBand = (low, high) => numeric.filter(item => item.x >= low && item.x < high);
-    let oddsWord = inBand(0.27, 0.39)[0];
-    let stakeWord = inBand(0.39, 0.56)[0];
-    let profitWord = numeric.filter(item => item.x >= 0.56).at(-1);
-    if (!oddsWord || !stakeWord) {
-      oddsWord = numeric[0]; stakeWord = numeric[1]; profitWord = numeric.length > 2 ? numeric.at(-1) : null;
+    const rowWords = line.words.slice().sort((a, b) => centerX(a) - centerX(b));
+    const numeric = rowWords.map(word => ({ word, x: centerX(word), value: numberValue(word) })).filter(item => Number.isFinite(item.value));
+    if (!numeric.length) return;
+    let oddsWord, stakeWord, profitWord;
+    if (oddsStart != null && stakeStart != null && profitStart != null) {
+      oddsWord = numeric.filter(item => item.x >= oddsStart + 0.025 && item.x < stakeStart - 0.025 && item.value >= 1 && item.value <= 1000).at(-1);
+      stakeWord = numeric.filter(item => item.x >= stakeStart - 0.025 && item.x < profitStart - 0.025 && item.value >= 0 && item.value <= 100000).sort((a, b) => Math.abs(a.x - stakeStart) - Math.abs(b.x - stakeStart))[0];
+      profitWord = numeric.filter(item => item.x >= profitStart - 0.025 && item.value >= 0 && item.value <= 100000).at(-1);
     }
-    if (!oddsWord || !stakeWord) return;
-    const bookmaker = line.words.slice(0, directionIndex).map(word => word.text).filter(word => !/^\(?[A-Z]{2}\)?$/i.test(word) && !/^[^\p{L}\p{N}]+$/u.test(word)).join(' ').trim();
-    const selection = line.words.slice(directionIndex, oddsWord.index).map(word => word.text).join(' ').trim();
-    legRows.push({ bookmaker, selection, odds: oddsWord.value, stake: stakeWord.value, profit: profitWord?.value || '', direction: directionWord });
+    // Some Surebet screen sizes omit the column labels from the OCR result.
+    // In that case, use the rightmost three numeric columns of the row.
+    if (!oddsWord || !stakeWord || !profitWord) {
+      const tail = numeric.filter(item => item.x > 0.18);
+      if (tail.length >= 3) [oddsWord, stakeWord, profitWord] = tail.slice(-3);
+    }
+    if (!oddsWord || !stakeWord || !profitWord || oddsWord.value <= 1 || stakeWord.value < 0) return;
+    const oddsX = oddsWord.x;
+    const leftWords = rowWords.filter(word => centerX(word) < oddsX - 0.025);
+    if (!leftWords.length) return;
+    const normalizedLeft = clean(leftWords.map(word => word.text).join(' ')).replace(/[^a-z0-9]/g, '');
+    const knownBook = bookmakers.find(name => normalizedLeft.includes(name.replace(/[^a-z0-9]/g, '')));
+    const regionIndex = leftWords.findIndex(word => /^\(?[A-Z]{2}\)?$/i.test(word.text.trim()));
+    const quotaBoundary = oddsStart ?? (oddsX * 0.42);
+    let bookmakerWords;
+    if (knownBook) {
+      const tokens = leftWords.filter(word => centerX(word) < quotaBoundary);
+      const wordsText = tokens.map(word => word.text);
+      const brandIndex = wordsText.findIndex(word => clean(word).replace(/[^a-z0-9]/g, '').includes(knownBook.replace(/[^a-z0-9]/g, '')));
+      bookmakerWords = brandIndex >= 0 ? tokens.slice(brandIndex, brandIndex + 2) : tokens;
+    } else if (regionIndex >= 0) bookmakerWords = leftWords.slice(0, regionIndex);
+    else bookmakerWords = leftWords.filter(word => centerX(word) < quotaBoundary);
+    const bookmaker = bookmakerWords.map(word => word.text).filter(word => !/^\(?[A-Z]{2}\)?$/i.test(word.trim())).join(' ').trim();
+    const selectionWords = rowWords.filter(word => centerX(word) >= quotaBoundary - 0.01 && centerX(word) < oddsX - 0.02);
+    const selection = selectionWords.map(word => word.text).join(' ').replace(/\s+/g, ' ').trim();
+    if (!bookmaker || !selection) return;
+    legRows.push({ bookmaker, selection, odds: oddsWord.value.toString(), stake: stakeWord.value.toString(), profit: profitWord.value.toString(), y: line.y });
   });
+  legRows.sort((a, b) => a.y - b.y);
   const fields = { event, player, sport, eventAt };
   legRows.slice(0, 2).forEach((leg, index) => {
     const number = index + 1;
@@ -573,6 +608,7 @@ function parseCaptureBet(words, rawText, imageWidth) {
   });
   return { fields, legCount: legRows.length, lines, text: allText };
 }
+
 async function prepareCaptureImage(blob) {
   const bitmap = await createImageBitmap(blob);
   const scale = Math.min(3, Math.max(2, 2200 / bitmap.width));
