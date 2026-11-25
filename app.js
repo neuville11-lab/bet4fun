@@ -433,6 +433,7 @@ $('#filter-type').addEventListener('change', renderRows);
 $('#notes-month').addEventListener('change', renderNoteAnalysis);
 showPage(location.hash.slice(1) && $(`#page-${location.hash.slice(1)}`) ? location.hash.slice(1) : 'dashboard');
 updateDashboard(); setInterval(updateDashboard, 30000);
+initializeCloud();
 
 function openCaptureDb() {
   if (captureDbPromise) return captureDbPromise;
