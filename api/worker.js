@@ -59,9 +59,14 @@ function scoreSides(game, sport) {
   if (sport === 'football') return { home: game.goals?.home, away: game.goals?.away };
   const scores = game.scores || game.game?.scores || {};
   const number = value => {
-    if (Number.isFinite(Number(value))) return Number(value);
-    for (const key of ['total', 'points', 'goals', 'runs', 'score']) if (Number.isFinite(Number(value?.[key]))) return Number(value[key]);
-    return null;
+    if (value == null || value === '') return null;
+    if (typeof value === 'object') {
+      for (const key of ['total', 'points', 'goals', 'runs', 'score']) {
+        if (value[key] != null && value[key] !== '' && Number.isFinite(Number(value[key]))) return Number(value[key]);
+      }
+      return null;
+    }
+    return Number.isFinite(Number(value)) ? Number(value) : null;
   };
   return { home: number(scores.home), away: number(scores.away) };
 }
