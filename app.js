@@ -492,7 +492,7 @@ $('#cloud-account').addEventListener('click', async () => {
   const { error } = await cloud.auth.signOut();
   if (error) setCloudStatus(`No se pudo cerrar sesión: ${error.message}`, true);
 });
-$('.nav-item').forEach(link => link.addEventListener('click', e => { e.preventDefault(); showPage(link.dataset.page); }));
+$$('.nav-item').forEach(link => link.addEventListener('click', e => { e.preventDefault(); showPage(link.dataset.page); }));
 $('#admin-users-refresh').addEventListener('click', loadAdminUsers);
 $$('[data-page-link]').forEach(link => link.addEventListener('click', () => showPage(link.dataset.pageLink)));
 $$('[data-open-form]').forEach(button => button.addEventListener('click', openModal));
