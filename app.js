@@ -150,7 +150,26 @@ async function initializeCloud() {
   if (!supabaseConfigReady) { setCloudStatus('Solo en este dispositivo'); return; }
   document.body.classList.add('cloud-configured'); showCloudGate('Conectando con tu cuenta…'); setCloudStatus('Conectando…');
   if (!window.supabase?.createClient) { showCloudGate('No se pudo cargar el servicio de cuenta. Comprueba tu conexión e inténtalo de nuevo.', true); setCloudStatus('Servicio no disponible', true); return; }
-  cloud = window.supabase.createClient(window.BET4FUN_SUPABASE_URL, window.BET4FUN_SUPABASE_ANON_KEY);
+  cloud = window.supabase.createClient(window.BET4FUN_SUPABASE_URL, window.BET4FUN_SUPABASE_ANON_KEY, {
+    auth: { detectSessionInUrl: true, persistSession: true, autoRefreshToken: true }
+  });
+  // Supabase usually consumes OAuth hash tokens automatically. This fallback
+  // persists them explicitly in case the page was restored from browser cache.
+  const oauthHash = new URLSearchParams(location.hash.slice(1));
+  const accessToken = oauthHash.get('access_token');
+  const refreshToken = oauthHash.get('refresh_token');
+  if (accessToken && refreshToken) {
+    const { error: sessionError } = await cloud.auth.setSession({
+      access_token: accessToken,
+      refresh_token: refreshToken
+    });
+    if (sessionError) {
+      showCloudGate(`No se pudo completar el inicio de sesión: ${sessionError.message}`, true);
+      setCloudStatus('Error al conectar', true);
+      return;
+    }
+    history.replaceState(null, document.title, location.pathname + location.search);
+  }
   const { data, error } = await cloud.auth.getSession();
   if (error) { showCloudGate(`No se pudo comprobar la sesión: ${error.message}`, true); setCloudStatus('Error de conexión', true); return; }
   await acceptCloudSession(data.session);
