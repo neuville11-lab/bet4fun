@@ -5,10 +5,9 @@
   <meta name="theme-color" content="#f5f6f2"><title>BET4FUN · Panel</title>
   <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800;900&family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=14">
+  <link rel="stylesheet" href="styles.css?v=15">
 </head>
 <body>
-  <div class="cloud-gate" id="cloud-gate" hidden role="dialog" aria-modal="true" aria-labelledby="cloud-gate-title"><section class="cloud-gate-card"><div class="brand-mark">b<span>4</span></div><div class="eyebrow">TU ESPACIO PRIVADO</div><h1 id="cloud-gate-title">Tus apuestas, en todos tus dispositivos</h1><p id="cloud-gate-message">Inicia sesión con Google para cargar tus apuestas privadas.</p><button class="primary-button" id="cloud-login" type="button">Continuar con Google</button><small id="cloud-gate-foot">Cada cuenta solo puede acceder a sus propios datos.</small></section></div>
   <aside class="sidebar">
     <a class="brand" href="#"><span class="brand-mark">b<span>4</span></span><span>BET<span class="brand-light">4FUN</span></span></a>
     <div class="workspace-label">TU ESPACIO</div>
@@ -23,7 +22,8 @@
     <div class="side-bottom"><div class="profile"><div class="avatar" id="profile-avatar">BF</div><div class="profile-copy"><b id="profile-name">Mi cuenta</b><small id="profile-email">Configura tu perfil</small></div><button type="button" class="dots" id="profile-edit" aria-label="Editar perfil" title="Editar perfil">···</button></div></div>
   </aside>
   <main class="main">
-    <header class="topbar"><div class="crumb">BET4FUN <span>/</span> <b id="crumb-name">Resumen</b></div><div class="top-actions"><span class="today" id="today"></span><span class="cloud-status local-mode" id="cloud-status">Solo en este dispositivo</span><button type="button" class="cloud-account-button" id="cloud-account">Conectar cuenta</button><button type="button" class="icon-button" aria-label="Notificaciones">♧</button><button type="button" class="avatar mini" id="profile-edit-top" aria-label="Editar perfil">BF</button></div></header>
+    <header class="topbar"><div class="crumb">BET4FUN <span>/</span> <b id="crumb-name">Resumen</b></div><div class="top-actions"><span class="today" id="today"></span><span class="cloud-status local-mode" id="cloud-status">Solo en este dispositivo</span><button type="button" class="cloud-account-button" id="cloud-account">Entrar con Google</button><button type="button" class="icon-button" aria-label="Notificaciones">♧</button><button type="button" class="avatar mini" id="profile-edit-top" aria-label="Editar perfil">BF</button></div></header>
+    <div class="cloud-gate" id="cloud-gate" hidden role="region" aria-labelledby="cloud-gate-title"><section class="cloud-gate-card"><div class="brand-mark" aria-hidden="true">b<span>4</span></div><div class="cloud-gate-copy"><div class="eyebrow">TU ESPACIO PRIVADO</div><h2 id="cloud-gate-title">Sincroniza tus apuestas</h2><p id="cloud-gate-message">Inicia sesión o regístrate con Google para guardar tus datos en la nube.</p><small id="cloud-gate-foot">Cada cuenta solo puede acceder a sus propias apuestas.</small></div><button class="primary-button" id="cloud-login" type="button">Entrar o registrarme con Google</button></section></div>
     <section class="page active-page" id="page-dashboard">
       <div class="page-heading"><div><div class="eyebrow"><span class="live-dot"></span> TU CENTRO DE CONTROL</div><h1>Resumen</h1><p class="subtitle">Apuestas por día y beneficio potencial mientras siguen abiertas.</p></div><button class="primary-button" data-open-form><span>＋</span> Registrar apuesta</button></div>
       <div class="period-row"><div><button class="period active">Este mes</button><button class="period" id="all-period">Todo el año</button></div><span class="updated">Actualizado ahora <span class="sync">⟳</span></span></div>
@@ -72,7 +72,7 @@
         }
       }
       const app = document.createElement('script');
-      app.src = 'app.js?v=28';
+      app.src = 'app.js?v=29';
       document.body.appendChild(app);
     })();
   </script>
