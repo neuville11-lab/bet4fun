@@ -71,9 +71,16 @@
           console.error('No se pudo restaurar la sesión de Google.');
         }
       }
-      const app = document.createElement('script');
-      app.src = 'app.js?v=' + Date.now() + '';
-      document.body.appendChild(app);
+      const loadApp = () => {
+        const app = document.createElement('script');
+        app.src = 'app.js?v=' + Date.now();
+        document.body.appendChild(app);
+      };
+      const apiConfig = document.createElement('script');
+      apiConfig.src = 'api-config.js?v=' + Date.now();
+      apiConfig.onload = loadApp;
+      apiConfig.onerror = loadApp;
+      document.body.appendChild(apiConfig);
     })();
   </script>
 </body></html>
