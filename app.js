@@ -100,7 +100,9 @@ async function loginWithGoogle() {
       if (!window.supabase?.createClient) throw new Error('No se pudo cargar el servicio de cuenta. Recarga la página e inténtalo de nuevo.');
       cloud = window.supabase.createClient(window.BET4FUN_SUPABASE_URL, window.BET4FUN_SUPABASE_ANON_KEY);
     }
-    const { error } = await cloud.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: location.origin + location.pathname } });
+    const callback = new URL(location.origin + location.pathname);
+    callback.searchParams.set('auth_reload', Date.now().toString(36));
+    const { error } = await cloud.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: callback.toString() } });
     if (error) throw error;
   } catch (error) {
     showCloudGate(`No se pudo iniciar sesión: ${error.message}`, true);
