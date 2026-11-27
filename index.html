@@ -5,7 +5,7 @@
   <meta name="theme-color" content="#f5f6f2"><title>BET4FUN · Panel</title>
   <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800;900&family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=16">
+  <link rel="stylesheet" href="styles.css?v=17">
 </head>
 <body>
   <aside class="sidebar">
@@ -14,6 +14,7 @@
     <nav>
       <a class="nav-item active" href="#page-dashboard" data-page="dashboard"><span class="nav-icon">▦</span>Resumen</a>
       <a class="nav-item" href="#page-apuestas" data-page="apuestas"><span class="nav-icon">↗</span>Mis apuestas <span class="nav-count" id="bet-count">0</span></a>
+      <a class="nav-item" href="#page-surebet" data-page="surebet"><span class="nav-icon">⌁</span>SureBet.com</a>
       <a class="nav-item" href="#page-promos" data-page="promos"><span class="nav-icon">✳</span>Freebets</a>
       <a class="nav-item" href="#page-datos" data-page="datos"><span class="nav-icon">▤</span>Datos</a>
       <a class="nav-item" href="#page-capturas" data-page="capturas"><span class="nav-icon">▧</span>Capturas</a>
@@ -39,6 +40,26 @@
       <footer>BET4FUN <span>·</span> Tu registro personal de apuestas <span class="foot-right"><span id="footer-storage-note">Sincroniza tus datos al conectar tu cuenta</span></span></footer>
     </section>
     <section class="page" id="page-apuestas"><div class="page-heading"><div><div class="eyebrow">SEGUIMIENTO</div><h1>Mis apuestas</h1><p class="subtitle">Agrupadas por día, con su resultado potencial.</p></div><button class="primary-button" data-open-form><span>＋</span> Registrar apuesta</button></div><article class="panel activity-panel full-list"><div class="panel-heading"><div><h2>Registro diario</h2><p id="list-summary">Tus apuestas registradas</p></div><select id="filter-type"><option value="Todas">Todos los tipos</option><option>Surebet</option><option>Freebet</option></select></div><div class="table-wrap"><table><thead><tr><th>EVENTO</th><th>TIPO</th><th>CASAS Y SELECCIONES</th><th>IMPORTE</th><th>BENEFICIO MÍNIMO</th><th>REVISIÓN</th></tr></thead><tbody id="all-rows"></tbody></table></div><div class="empty-note" id="list-empty">Todavía no hay apuestas registradas.</div></article></section>
+    <section class="page" id="page-surebet"><div class="page-heading"><div><div class="eyebrow">OPORTUNIDADES DE SUREBET.COM</div><h1>SureBet.com</h1><p class="subtitle">Importación local de oportunidades. No se conecta automáticamente a la web de origen.</p></div></div>
+      <article class="panel surebet-import-panel"><div class="surebet-import-copy"><div><h2>Importar oportunidades</h2><p>Sube un archivo JSON exportado en tu dispositivo. Se conservará aquí y se mostrarán las diez primeras oportunidades.</p></div><div class="surebet-import-actions"><input type="file" id="surebet-json-file" accept=".json,application/json" hidden><button type="button" class="primary-button" id="surebet-choose-file">＋ Importar JSON</button><button type="button" class="secondary-button" id="surebet-clear" disabled>Limpiar importación</button></div></div>
+        <div class="surebet-import-meta"><span id="surebet-import-status" role="status">Todavía no has importado oportunidades.</span><span id="surebet-updated">Última actualización: —</span></div>
+        <details class="surebet-format"><summary>Formato JSON esperado</summary><p>El archivo debe contener una lista <code>opportunities</code>. Cada oportunidad incluye <code>event</code>, <code>sport</code>, <code>competition</code>, <code>startsAt</code>, <code>profitPct</code> y una lista <code>offers</code>. Cada cuota incluye <code>side</code> (<code>favor</code> o <code>contra</code>), <code>bookmaker</code>, <code>market</code> y <code>odds</code>.</p><pre>{
+  "opportunities": [{
+    "id": "opp-1",
+    "event": "Equipo A – Equipo B",
+    "sport": "Fútbol",
+    "competition": "Liga",
+    "startsAt": "2026-11-27T19:00:00+01:00",
+    "profitPct": 2.8,
+    "offers": [
+      { "side": "favor", "bookmaker": "Casa A", "market": "Resultado", "odds": 2.1 },
+      { "side": "contra", "bookmaker": "Casa B", "market": "Resultado", "odds": 2.05 }
+    ]
+  }]
+}</pre></details>
+      </article>
+      <article class="panel surebet-table-panel"><div class="surebet-table-heading"><div><h2>Primeras oportunidades</h2><p id="surebet-count">Importa un JSON para ver las oportunidades.</p></div><span class="surebet-live-label"><i></i> DATOS LOCALES</span></div><div class="table-wrap"><table class="surebet-table"><thead><tr><th>PARTIDO</th><th>DEPORTE / COMPETICIÓN</th><th>FECHA</th><th>CASAS, MERCADOS Y CUOTAS</th><th>BENEFICIO</th></tr></thead><tbody id="surebet-rows"></tbody></table></div><div class="surebet-empty" id="surebet-empty"><span>⌁</span><b>Esperando una importación</b><small>Las oportunidades aparecerán aquí agrupadas por evento.</small></div></article>
+    </section>
     <section class="page" id="page-promos"><div class="page-heading"><div><div class="eyebrow">PROMOCIONES</div><h1>Freebets</h1><p class="subtitle">Sigue el valor real de tus promociones.</p></div><button class="primary-button" data-open-form data-kind="Freebet"><span>＋</span> Añadir freebet</button></div><div class="stats-grid promo-stats"><article class="stat-card"><div class="stat-top"><span>Beneficio obtenido</span><span class="stat-icon lilac">✳</span></div><div class="stat-value" id="promo-page-earned">€41,27</div><div class="stat-foot"><span class="muted-pill">Acumulado</span></div></article><article class="stat-card"><div class="stat-top"><span>Promociones usadas</span><span class="stat-icon blue">✓</span></div><div class="stat-value" id="promo-count">0</div><div class="stat-foot"><span class="muted-pill">Registradas</span></div></article><article class="stat-card"><div class="stat-top"><span>Por convertir</span><span class="stat-icon orange">◷</span></div><div class="stat-value">€0,00</div><div class="stat-foot"><span class="muted-pill">Pendiente</span></div></article></div><article class="panel"><div class="panel-heading"><div><h2>Actividad de freebets</h2><p>Registra promociones como cualquier otra apuesta</p></div></div><div class="empty-promo"><div class="promo-orb">✳</div><b>Las promociones también cuentan</b><p>Añade tus freebets y el panel irá sumando lo que realmente te aportan.</p><button class="secondary-button" data-open-form data-kind="Freebet">＋ Añadir freebet</button></div></article></section>
     <section class="page" id="page-datos"><div class="page-heading"><div><div class="eyebrow">ESTADÍSTICAS DE JUEGO</div><h1>Datos</h1><p class="subtitle">Dinero jugado y frecuencia de tus apuestas por casa y deporte.</p></div></div>
       <div class="stats-grid data-stats"><article class="stat-card"><div class="stat-top"><span>Casas utilizadas</span><span class="stat-icon blue">▤</span></div><div class="stat-value" id="bookmaker-count">0</div><div class="stat-foot"><span class="muted-pill">Con actividad registrada</span></div></article><article class="stat-card"><div class="stat-top"><span>Dinero jugado</span><span class="stat-icon lime">€</span></div><div class="stat-value" id="bookmaker-volume">€0</div><div class="stat-foot"><span class="muted-pill">Suma de apuestas individuales</span></div></article></div>
@@ -76,10 +97,17 @@
         app.src = 'app.js?v=' + Date.now();
         document.body.appendChild(app);
       };
+      const loadSurebetModule = () => {
+        const module = document.createElement('script');
+        module.src = 'surebet-module.js?v=' + Date.now();
+        module.onload = loadApp;
+        module.onerror = loadApp;
+        document.body.appendChild(module);
+      };
       const apiConfig = document.createElement('script');
       apiConfig.src = 'api-config.js?v=' + Date.now();
-      apiConfig.onload = loadApp;
-      apiConfig.onerror = loadApp;
+      apiConfig.onload = loadSurebetModule;
+      apiConfig.onerror = loadSurebetModule;
       document.body.appendChild(apiConfig);
     })();
   </script>
