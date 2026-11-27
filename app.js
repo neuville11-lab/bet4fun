@@ -487,7 +487,7 @@ function showPage(name) {
   if (name === 'usuarios' && !isAdmin) name = 'dashboard';
   $$('.page').forEach(page => page.classList.toggle('active-page', page.id === `page-${name}`));
   $$('.nav-item').forEach(link => link.classList.toggle('active', link.dataset.page === name));
-  $('#crumb-name').textContent = ({ dashboard: 'Resumen', apuestas: 'Mis apuestas', promos: 'Freebets', datos: 'Datos', capturas: 'Capturas', usuarios: 'Usuarios' })[name] || 'Resumen';
+  $('#crumb-name').textContent = ({ dashboard: 'Resumen', apuestas: 'Mis apuestas', surebet: 'SureBet.com', promos: 'Freebets', datos: 'Datos', capturas: 'Capturas', usuarios: 'Usuarios' })[name] || 'Resumen';
   history.replaceState(null, '', `#${name}`);
   if (name === 'capturas') return renderCaptures();
   if (name === 'usuarios') return loadAdminUsers();
