@@ -63,3 +63,44 @@ body.cloud-locked .page.active-page{filter:blur(6px);opacity:.56;pointer-events:
 .data-stats{grid-template-columns:repeat(2,minmax(0,1fr))}
 .data-visuals{grid-template-columns:repeat(2,minmax(0,1fr))}
 @media(max-width:650px){.cloud-gate-card{align-items:flex-start;flex-wrap:wrap;padding:13px}.cloud-gate-copy{flex:1 1 calc(100% - 48px)}.cloud-gate-card .primary-button{width:100%;justify-content:center}.data-stats,.data-visuals{grid-template-columns:1fr}}
+
+
+/* SureBet.com local import module */
+.surebet-import-panel,.surebet-table-panel{margin-top:16px}
+.surebet-import-copy,.surebet-table-heading{display:flex;align-items:center;justify-content:space-between;gap:16px}
+.surebet-import-copy h2,.surebet-table-heading h2{margin:0 0 5px;color:#17212a;font:800 21px 'Barlow Condensed';text-transform:uppercase}
+.surebet-import-copy p,.surebet-table-heading p{margin:0;color:#727a77;font:10px 'DM Mono';line-height:1.5}
+.surebet-import-actions{display:flex;flex-wrap:wrap;align-items:center;gap:9px}
+.surebet-import-actions .primary-button,.surebet-import-actions .secondary-button{white-space:nowrap}
+.surebet-import-actions .secondary-button:disabled{opacity:.45;cursor:not-allowed}
+.surebet-import-meta{display:flex;justify-content:space-between;gap:12px;margin-top:16px;padding:10px 0;border-top:1px solid #d8d5ca;color:#747c77;font:9px 'DM Mono'}
+#surebet-import-status{color:#52633b}
+.surebet-format{margin-top:7px;border-top:1px dashed #d8d5ca;padding-top:10px;color:#536059;font:10px 'DM Mono'}
+.surebet-format summary{width:max-content;cursor:pointer;color:#a32d28;text-transform:uppercase;font-size:9px}
+.surebet-format p{max-width:900px;line-height:1.7;color:#69746d}
+.surebet-format pre{max-width:100%;overflow:auto;padding:12px;border:1px solid #d5d2c7;background:#f3f0e7;color:#48534f;font:9px/1.55 'DM Mono';white-space:pre-wrap}
+.surebet-table-heading{margin-bottom:13px}
+.surebet-live-label{display:flex;align-items:center;gap:7px;padding:6px 8px;background:#e8e6dc;color:#657065;font:8px 'DM Mono';letter-spacing:.5px;white-space:nowrap}
+.surebet-live-label i{width:6px;height:6px;border-radius:50%;background:#859d3b}
+.surebet-table{min-width:960px}
+.surebet-table td{vertical-align:top;padding:12px 10px}
+.sb-index{display:inline-grid;place-items:center;width:23px;height:23px;margin-right:8px;background:#17212a;color:#f1d22f;font:700 9px 'DM Mono';vertical-align:middle}
+.sb-event{display:inline-block;max-width:245px;color:#17212a;font:700 15px/1.15 'Barlow Condensed';text-transform:uppercase;vertical-align:middle}
+.sb-sport{display:block;color:#34434a;font:600 10px 'DM Sans'}
+.sb-competition{display:block;margin-top:4px;color:#7e8581;font:8px 'DM Mono';line-height:1.4}
+.sb-date{min-width:145px;color:#69746d;font:9px/1.5 'DM Mono'}
+.sb-offers-cell{min-width:390px}
+.sb-offer{display:grid;grid-template-columns:92px minmax(92px,.8fr) minmax(110px,1.4fr) 58px;align-items:center;gap:7px;padding:5px 0;border-bottom:1px dashed #e0ddd3}
+.sb-offer:last-child{border-bottom:0}
+.sb-side{width:max-content;padding:4px 5px;border:1px solid #aebc8c;background:#eef1e2;color:#526737;font:700 7px 'DM Mono';letter-spacing:.2px;white-space:nowrap}
+.sb-side.contra{border-color:#d6aaa1;background:#f5e8e5;color:#9c3d32}
+.sb-offer>b{overflow:hidden;color:#293941;font-size:9px;text-overflow:ellipsis;white-space:nowrap}
+.sb-market{overflow:hidden;color:#747d79;font:8px 'DM Mono';text-overflow:ellipsis;white-space:nowrap}
+.sb-odds{color:#17212a;font:700 10px 'DM Mono';text-align:right}
+.sb-profit{display:inline-block;padding:6px 7px;background:#f1d84d;color:#17212a;font:700 11px 'DM Mono';white-space:nowrap}
+.surebet-empty{display:grid;justify-items:center;gap:7px;padding:36px 12px;color:#77817b;text-align:center}
+.surebet-empty[hidden]{display:none}
+.surebet-empty>span{color:#b52b28;font:30px 'DM Sans'}
+.surebet-empty>b{color:#29343b;font:800 20px 'Barlow Condensed';text-transform:uppercase}
+.surebet-empty>small{font:9px 'DM Mono'}
+@media(max-width:760px){.surebet-import-copy,.surebet-table-heading{align-items:flex-start;flex-direction:column}.surebet-import-actions{width:100%}.surebet-import-meta{flex-direction:column}.surebet-import-actions button{flex:1;justify-content:center}}
