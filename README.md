@@ -23,3 +23,11 @@ El proyecto se puede publicar gratis con GitHub Pages desde un repositorio públ
 - Sincronización opcional de apuestas entre dispositivos y almacenamiento privado opcional de capturas.
 
 
+
+## Módulo SureBet.com
+
+La importación inicial es manual y local al navegador. No consulta SureBet.com, no actualiza los datos automáticamente y no envía el archivo a Supabase ni a Cloudflare. La importación más reciente se guarda en `localStorage` bajo una clave independiente de las apuestas registradas.
+
+El JSON debe contener `opportunities` (o ser directamente una lista). Cada oportunidad debe incluir `event`, `startsAt`, `profitPct` y al menos dos `offers`. Cada cuota debe indicar `side` (`favor` o `contra`), `bookmaker`, `market` y `odds`. Los campos informativos `sport` y `competition` se muestran como “Sin especificar” y “Sin competición” si faltan. Se aceptan nombres de campos habituales en español e inglés; la página muestra las diez primeras en el orden del archivo.
+
+La actualización automatizada se mantiene pendiente de revisar las condiciones de uso de SureBet.com y confirmar que permiten la recopilación periódica.
